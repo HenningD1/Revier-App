@@ -13,6 +13,7 @@ import {
 import { toGeoJSON, toKML, toGPX, toCSV, parseAny } from './io.js';
 import { PolygonEditor } from './draw.js';
 import { Positioning } from './gps.js';
+import { buildDial } from './compass.js';
 import {
   $, esc, toast, openForm, confirmDialog, sheet, deliverFile, fmtDateTime, toLocalInput, options
 } from './ui.js';
@@ -30,7 +31,7 @@ const state = {
   filter: { jj: jagdjahr(Date.now()), revierId: '', typ: '', wildart: '' }
 };
 
-let map, editor, pos;
+let map, editor, pos, dial;
 const layers = { reviere: null, einr: null, ereig: null, me: null, acc: null };
 const prefs = loadPrefs();
 
@@ -59,6 +60,7 @@ async function init() {
   initMap();
   editor = new PolygonEditor(map, { onChange: updateDrawbar });
   pos = new Positioning({ onPosition, onError: e => toast(e.message, { ms: 6000 }), onHeading });
+  dial = buildDial($('#compass-dial'));
   bindUi();
   renderAll();
   store.onChange(() => renderAll());
@@ -525,12 +527,16 @@ function onPosition(p) {
       icon: L.divIcon({ className: 'me-wrap', html: '<div class="me"><div class="cone"></div><div class="dot"></div></div>', iconSize: [60, 60], iconAnchor: [30, 30] }),
       interactive: false, zIndexOffset: 2000, keyboard: false
     }).addTo(map);
-    if (state.follow) map.setView(ll, Math.max(map.getZoom(), 16));
+    if (state.follow) map.setView(ll, p.accuracy > COARSE_M ? 13 : Math.max(map.getZoom(), 16));
   } else {
     layers.me.setLatLng(ll);
     layers.acc.setLatLng(ll).setRadius(p.accuracy);
-    if (state.follow) map.panTo(ll, { animate: true });
+    // erst grob, jetzt genau: einmal heranzoomen
+    if (state.follow && state.lastAcc > COARSE_M && p.accuracy <= COARSE_M) map.setView(ll, Math.max(map.getZoom(), 16));
+    else if (state.follow) map.panTo(ll, { animate: true });
   }
+  state.lastAcc = p.accuracy;
+  layers.me.getElement && layers.me.getElement() && layers.me.getElement().classList.toggle('coarse', p.accuracy > COARSE_M);
   // Ohne Kompass: Bewegungsrichtung aus dem GPS anzeigen (nur bei Bewegung sinnvoll)
   if (!pos.compassActive) setCone(p.speed > 0.7 && Number.isFinite(p.heading) ? p.heading : null);
   $('#place-me').disabled = false;
@@ -547,11 +553,7 @@ function setCone(h) {
 }
 
 function onHeading(h) {
-  const w = $('#compass-widget');
-  if (h === null) { w.hidden = true; setCone(null); return; }
-  w.hidden = false;
-  $('#compass-rose').style.transform = `rotate(${-h}deg)`;
-  $('#compass-deg').textContent = `${Math.round(h) % 360}° ${compassName(h)}`;
+  dial.update(h);
   setCone(h);
 }
 
@@ -569,6 +571,8 @@ function toggleLocate() {
     state.follow = false;
     if (layers.me) { layers.me.remove(); layers.acc.remove(); layers.me = layers.acc = null; }
     pos.last = null;
+    state.lastAcc = null;
+    coarseHintShown = false;
   }
   updateLocateButton();
   updateStatus();
@@ -591,11 +595,27 @@ function updateCompassButton() {
   $('#btn-compass').classList.toggle('on', pos.compassActive);
 }
 
+// Ab dieser Ungenauigkeit ist es keine GPS-Position mehr, sondern eine grobe Schätzung
+const COARSE_M = 500;
+let coarseHintShown = false;
+
+function accText(a) {
+  return a >= 1000 ? `±${(a / 1000).toFixed(1).replace('.', ',')} km` : `±${Math.round(a)} m`;
+}
+
+function coarseHint() {
+  if (coarseHintShown) return;
+  coarseHintShown = true;
+  toast(`Sehr ungenaue Position (${accText(pos.last.accuracy)}). Auf dem iPhone: Einstellungen → Datenschutz & Sicherheit → Ortungsdienste → Safari-Websites → „Beim Verwenden“ und „Genauer Standort“ einschalten. Danach GPS-Knopf aus- und wieder einschalten.`, { ms: 15000 });
+}
+
 function updateStatus() {
   const parts = [];
   if (pos && pos.gpsActive) {
     if (pos.last) {
-      parts.push(`GPS ±${Math.round(pos.last.accuracy)} m`);
+      const coarse = pos.last.accuracy > COARSE_M;
+      parts.push(coarse ? `<b class="warn">⚠ ungenau ${accText(pos.last.accuracy)}</b>` : `GPS ${accText(pos.last.accuracy)}`);
+      if (coarse) coarseHint();
       const r = revierOf(pos.last);
       parts.push(r ? `Im Revier: ${esc(r.name)}` : 'außerhalb der Reviere');
     } else {
@@ -864,6 +884,14 @@ function bindUi() {
     if (el && !el.dataset.actBound) { el.dataset.actBound = '1'; el.addEventListener('click', onActClick); }
   });
 
+  // Antippen der Statuszeile zeigt die Rohdaten der Position (zur Fehlersuche)
+  $('#statusbar').onclick = () => {
+    const p = pos.last;
+    if (!p) return;
+    const age = Math.round((Date.now() - p.time) / 1000);
+    toast(`${p.lat.toFixed(6)}, ${p.lng.toFixed(6)} · Genauigkeit ${accText(p.accuracy)} · vor ${age} s` +
+      (pos.rejected ? ` · ${pos.rejected} grobe Positionen verworfen` : ''), { ms: 8000 });
+  };
   window.addEventListener('online', updateStatus);
   window.addEventListener('offline', updateStatus);
   document.addEventListener('keydown', e => {

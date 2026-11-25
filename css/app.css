@@ -65,20 +65,23 @@ body {
   max-width: calc(100vw - 120px); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 #statusbar[hidden] { display: none; }
+#statusbar { cursor: pointer; }
+#statusbar .warn { color: #ffb74d; }
 
-#compass-widget {
-  position: fixed; left: 10px; top: calc(var(--safe-top) + 10px); z-index: 900;
-  background: rgba(255,255,255,.92); border-radius: 12px; padding: 6px 8px; text-align: center;
-  box-shadow: 0 1px 6px rgba(0,0,0,.25);
+#compass-dial {
+  position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(var(--bottom) + 6px); z-index: 850;
+  width: min(340px, calc(100vw - 140px)); pointer-events: none;
+  filter: drop-shadow(0 0 1.5px rgba(0,0,0,.95)) drop-shadow(0 0 3px rgba(0,0,0,.6));
 }
-#compass-widget[hidden] { display: none; }
-#compass-rose {
-  width: 54px; height: 54px; margin: 0 auto; border-radius: 50%; border: 2px solid var(--green);
-  position: relative; transition: transform .15s linear;
-  background: conic-gradient(from -8deg, #d32f2f 0 16deg, transparent 16deg 172deg, #555 172deg 188deg, transparent 188deg);
-}
-#compass-rose .n { position: absolute; top: 2px; left: 50%; transform: translateX(-50%); font-weight: 700; font-size: 12px; color: #d32f2f; }
-#compass-deg { font-size: 13px; font-weight: 600; margin-top: 2px; }
+#compass-dial[hidden] { display: none; }
+#compass-dial svg { display: block; width: 100%; height: auto; overflow: visible; }
+#compass-dial .tick { stroke: #fff; stroke-linecap: round; }
+#compass-dial .num { fill: #fff; font: 600 13px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+#compass-dial .dir { fill: #fff; font: 800 19px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+#compass-dial .dir.n { fill: #ff5a4a; }
+#compass-dial .index { fill: #d9822b; stroke: #fff; stroke-width: 1.5; }
+#compass-dial .read { fill: #fff; font: 800 22px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+body.mode-draw #compass-dial, body.mode-place #compass-dial { bottom: calc(150px + var(--safe-bottom)); }
 
 /* ---------- Fadenkreuz & Werkzeugleisten ---------- */
 #crosshair {
@@ -223,6 +226,7 @@ dialog::backdrop { background: rgba(0,0,0,.45); }
   position: absolute; left: 21px; top: 21px; width: 18px; height: 18px; border-radius: 50%;
   background: #1976d2; border: 3px solid #fff; box-shadow: 0 0 6px rgba(0,0,0,.4);
 }
+.me-wrap.coarse .dot { background: #9e9e9e; }
 .me .cone {
   display: none; position: absolute; inset: 0; border-radius: 50%;
   background: conic-gradient(from -25deg, rgba(25,118,210,.55) 0deg 50deg, transparent 50deg);

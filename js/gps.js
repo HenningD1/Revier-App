@@ -34,10 +34,12 @@ export class Positioning {
     this.watchId = navigator.geolocation.watchPosition(
       pos => {
         const c = pos.coords;
-        this.last = {
+        const fix = {
           lat: c.latitude, lng: c.longitude, accuracy: c.accuracy,
-          altitude: c.altitude, heading: c.heading, speed: c.speed, time: pos.timestamp
+          altitude: c.altitude, heading: c.heading, speed: c.speed, time: pos.timestamp || Date.now()
         };
+        if (!this.accept(fix)) return;
+        this.last = fix;
         this.onPosition(this.last);
       },
       err => {
@@ -48,9 +50,33 @@ export class Positioning {
         }[err.code] || err.message;
         this.onError(new Error(msg));
       },
-      { enableHighAccuracy: true, maximumAge: 2000, timeout: 30000 }
+      // maximumAge 0: keine zwischengespeicherte (evtl. alte, grobe) Position akzeptieren
+      { enableHighAccuracy: true, maximumAge: 0, timeout: 30000 }
     );
     return true;
+  }
+
+  /**
+   * Plausibilitätsprüfung eines neuen Fixes.
+   * iOS liefert zu Beginn oft eine grobe WLAN-/Mobilfunk-Position (±1–5 km) und erst danach GPS.
+   * Hat man schon eine gute Position, wird ein plötzlich viel schlechterer Fix (z. B. kurzer
+   * GPS-Abriss im Wald) für 30 s ignoriert, statt den Punkt kilometerweit springen zu lassen.
+   */
+  accept(fix) {
+    if (!Number.isFinite(fix.lat) || !Number.isFinite(fix.lng)) return false;
+    const prev = this.last;
+    if (!prev) return true;
+    const age = (fix.time - prev.time) / 1000;
+    const muchWorse = fix.accuracy > Math.max(150, prev.accuracy * 3);
+    if (muchWorse && age < 30) { this.rejected = (this.rejected || 0) + 1; return false; }
+    return true;
+  }
+
+  /** GPS neu starten (z. B. nach geänderten iOS-Einstellungen) */
+  restartGPS() {
+    this.stopGPS();
+    this.last = null;
+    return this.startGPS();
   }
 
   stopGPS() {

@@ -17,7 +17,7 @@ const TILE_MAX = 6000;           // ca. 6000 Kacheln ≈ 100–300 MB je nach Ka
 const SHELL_FILES = [
   './', './index.html', './manifest.webmanifest', './css/app.css',
   './js/app.js', './js/config.js', './js/store.js', './js/geo.js', './js/io.js',
-  './js/draw.js', './js/gps.js', './js/ui.js',
+  './js/draw.js', './js/gps.js', './js/ui.js', './js/compass.js',
   './icons/icon-192.png', './icons/icon-512.png', './icons/apple-touch-icon.png'
 ];
 const CDN_FILES = [

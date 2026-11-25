@@ -1,7 +1,11 @@
 // Zentrale Konfiguration: Kartenquellen, Typen, Farben.
 // Alles, was man später anpassen möchte, steht hier – nicht verstreut im Code.
 
-export const APP_VERSION = '0.3.0';
+export const APP_VERSION = '0.4.0';
+
+// OneDrive: Anwendungs-ID (Client-ID) der eigenen App-Registrierung. Leer = in der App unter
+// „Mehr → OneDrive-Abgleich → Einrichtung“ eintragen (wird dann pro Gerät gespeichert).
+export const ONEDRIVE_CLIENT_ID = '';
 
 // Startansicht, falls noch keine gespeicherte Ansicht existiert (ungefähr Mitte NRW)
 export const DEFAULT_VIEW = { lat: 51.47, lng: 7.55, zoom: 8 };

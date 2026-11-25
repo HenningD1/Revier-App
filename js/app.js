@@ -5,7 +5,7 @@ import * as store from './store.js';
 import {
   APP_VERSION, DEFAULT_VIEW, BASE_LAYERS, OVERLAY_LAYERS, EINRICHTUNG_TYPEN, EREIGNIS_TYPEN,
   WILDARTEN, GESCHLECHT, ALTERSKLASSEN, REVIER_FARBEN, NRW_BOUNDS, NRW_OVERVIEW,
-  OFFLINE_BUFFER_M, OFFLINE_WARN_TILES, OFFLINE_MAX_TILES
+  OFFLINE_BUFFER_M, OFFLINE_WARN_TILES, OFFLINE_MAX_TILES, ONEDRIVE_CLIENT_ID
 } from './config.js';
 import {
   geometryArea, formatArea, findRevier, distance, bearing, compassName, formatDistance,
@@ -18,6 +18,7 @@ import { buildDial } from './compass.js';
 import { einrSvg, animalSvg } from './icons.js';
 import { tileUrl, geomBounds, buffer } from './tiles.js';
 import * as offline from './offline.js';
+import { OneDrive, syncOnce, redirectUri, AuthError, FILE_NAME } from './sync.js';
 import {
   $, esc, toast, openForm, confirmDialog, sheet, deliverFile, fmtDateTime, toLocalInput, options
 } from './ui.js';
@@ -36,6 +37,8 @@ const state = {
 };
 
 let map, editor, pos, dial;
+const cloud = new OneDrive({ clientId: ONEDRIVE_CLIENT_ID || undefined });
+const syncState = { running: false, timer: 0, last: +(localStorage.getItem('jagd.sync.last') || 0), error: '' };
 const layers = { reviere: null, einr: null, ereig: null, me: null, acc: null };
 const prefs = loadPrefs();
 
@@ -70,8 +73,12 @@ async function init() {
   dial = buildDial($('#compass-dial'));
   bindUi();
   renderAll();
-  store.onChange(() => renderAll());
+  store.onChange(ch => {
+    renderAll();
+    if (!syncState.running && ch.type !== 'wipe') scheduleSync(15000);   // eigene Änderung -> bald hochladen
+  });
   registerServiceWorker();
+  initSync();
 }
 
 // ---------------------------------------------------------------------------
@@ -728,6 +735,7 @@ function ereignisseTab() {
 function mehrTab() {
   const n = k => store.all(k).length;
   return `
+    ${syncSection()}
     <h3>Sichern & Austauschen</h3>
     <p class="hint">${n('revier')} Reviere · ${n('einrichtung')} Einrichtungen · ${n('ereignis')} Ereignisse</p>
     <div class="sheet-actions col">
@@ -736,7 +744,7 @@ function mehrTab() {
       <button class="btn" data-act="export-gpx">Export für GPS-Geräte (GPX)</button>
       <button class="btn" data-act="import">Datei importieren (GeoJSON, KML, GPX)</button>
     </div>
-    <p class="hint">Auf dem iPhone öffnet sich das Teilen-Menü – dort „In Dateien sichern“ und den OneDrive-Ordner wählen. Der automatische OneDrive-Abgleich folgt in Stufe 2.</p>
+    <p class="hint">Ohne Anmeldung: Backup über das Teilen-Menü („In Dateien sichern“) z. B. in OneDrive ablegen und auf dem anderen Gerät importieren – beim Import gewinnt je Eintrag der neuere Stand.</p>
     <h3>Offline-Karten</h3>
     ${offlineList()}
     <div class="sheet-actions col"><button class="btn primary" data-act="off-new">Neues Offline-Paket laden</button></div>
@@ -875,6 +883,93 @@ async function runOfflineDownload(sel) {
     box.hidden = true;
     if (sheet.isOpen && state.tab === 'mehr') renderTab('mehr');
   }
+}
+
+// ---------------------------------------------------------------------------
+// OneDrive-Abgleich (Stufe 2)
+// ---------------------------------------------------------------------------
+
+async function initSync() {
+  try {
+    if (await cloud.handleRedirect()) toast('Bei OneDrive angemeldet' + (cloud.account ? ': ' + cloud.account : ''));
+  } catch (e) {
+    syncState.error = e.message;
+    toast('OneDrive-Anmeldung fehlgeschlagen: ' + e.message, { ms: 8000 });
+  }
+  if (cloud.signedIn) runSync();
+  window.addEventListener('online', () => runSync());
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible' && Date.now() - syncState.last > 120000) runSync();
+  });
+}
+
+function scheduleSync(ms) {
+  if (!cloud.signedIn) return;
+  clearTimeout(syncState.timer);
+  syncState.timer = setTimeout(() => runSync(), ms);
+}
+
+async function runSync({ manual = false } = {}) {
+  if (!cloud.signedIn || syncState.running) return;
+  if (!navigator.onLine) { if (manual) toast('Offline – Abgleich folgt automatisch, sobald wieder Netz da ist'); return; }
+  syncState.running = true;
+  updateSyncInfo('Abgleich läuft …');
+  try {
+    const r = await syncOnce(cloud, store);
+    syncState.last = Date.now();
+    syncState.error = '';
+    try { localStorage.setItem('jagd.sync.last', String(syncState.last)); } catch (_) { /* ignore */ }
+    if (manual || r.pulled) toast(r.pulled ? `OneDrive: ${r.pulled} Änderung(en) übernommen` : 'OneDrive: alles aktuell');
+  } catch (e) {
+    syncState.error = e.message;
+    if (manual || e instanceof AuthError) toast('OneDrive: ' + e.message, { ms: 6000 });
+  } finally {
+    syncState.running = false;
+    updateSyncInfo();
+  }
+}
+
+function syncStatusText() {
+  if (!cloud.configured) return 'Noch nicht eingerichtet (Anwendungs-ID fehlt).';
+  if (!cloud.signedIn) return syncState.error ? 'Abgemeldet: ' + syncState.error : 'Nicht angemeldet.';
+  const last = syncState.last ? 'zuletzt ' + fmtDateTime(syncState.last) : 'noch nie abgeglichen';
+  return `Angemeldet${cloud.account ? ' als ' + cloud.account : ''} · ${last}` + (syncState.error ? ` · Fehler: ${syncState.error}` : '');
+}
+
+function updateSyncInfo(text) {
+  const el = $('#sync-info');
+  if (el) el.textContent = text || syncStatusText();
+}
+
+function syncSection() {
+  return `
+    <h3>OneDrive-Abgleich</h3>
+    <p class="hint" id="sync-info">${esc(syncStatusText())}</p>
+    <div class="sheet-actions">
+      ${cloud.signedIn
+        ? `<button class="btn primary" data-act="sync-now">Jetzt abgleichen</button><button class="btn" data-act="sync-logout">Abmelden</button>`
+        : `<button class="btn primary" data-act="sync-login"${cloud.configured ? '' : ' disabled'}>Bei OneDrive anmelden</button>`}
+      <button class="btn" data-act="sync-setup">Einrichtung</button>
+    </div>
+    <p class="hint">Die Daten liegen in deinem OneDrive unter „Apps/…/${FILE_NAME}“. Abgleich automatisch beim Öffnen und kurz nach jeder Änderung.</p>`;
+}
+
+function syncSetupForm() {
+  return openForm({
+    title: 'OneDrive einrichten',
+    submit: 'Speichern',
+    body: `
+      <p class="hint">Einmalig nötig: eine kostenlose App-Registrierung bei Microsoft (Anleitung in der README im GitHub-Repo, Abschnitt „OneDrive einrichten“). Dort trägst du diese Weiterleitungsadresse als <b>Single-Page-Application</b> ein:</p>
+      <label>Weiterleitungsadresse (Redirect-URI)<input readonly value="${esc(redirectUri())}" onclick="this.select()"></label>
+      <label>Anwendungs-ID (Client-ID)<input name="clientId" value="${esc(cloud.clientId)}" placeholder="z. B. 1a2b3c4d-…" autocomplete="off" spellcheck="false"></label>
+      <p class="hint">Die ID ist kein Geheimnis. Sie muss auf jedem Gerät einmal eingetragen werden (oder fest in js/config.js).</p>`,
+    onSubmit: async d => {
+      const id = d.clientId.trim();
+      if (id && !/^[0-9a-f-]{36}$/i.test(id)) throw new Error('Das sieht nicht wie eine Anwendungs-ID aus (Format 8-4-4-4-12).');
+      cloud.setClientId(id);
+      renderTab('mehr');
+    }
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -1063,6 +1158,16 @@ async function handleAction(act, d) {
     case 'rv-zoom': if (rec) zoomTo(rec); break;
     case 'rv-offline': if (rec) { map.closePopup(); offlineForm(rec.id); } break;
     case 'off-new': offlineForm(); break;
+    case 'sync-setup': syncSetupForm(); break;
+    case 'sync-login':
+      try { await cloud.login(); } catch (e) { toast(e.message, { ms: 6000 }); }
+      break;
+    case 'sync-now': runSync({ manual: true }); break;
+    case 'sync-logout':
+      if (await confirmDialog('Abmelden?', 'Die Daten bleiben auf diesem Gerät und in OneDrive erhalten.', 'Abmelden')) {
+        cloud.logout(); renderTab('mehr');
+      }
+      break;
     case 'off-del': {
       const p = offline.listPackages().find(x => x.id === d.id);
       if (p && await confirmDialog('Offline-Paket löschen?', `„${p.name}“ wird von diesem Gerät entfernt.`, 'Löschen')) {

@@ -208,6 +208,59 @@ def main():
         assert left == 0, left
         step('Offline-Paket gelöscht')
 
+        # --- OneDrive: Einrichtung, Anmeldung (PKCE) und Abgleich gegen simulierten Microsoft-Dienst ---
+        from urllib.parse import urlparse, parse_qs
+        cloud = {'body': None, 'etag': 0}
+        CORS = {'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': '*', 'Access-Control-Allow-Methods': 'GET,PUT,POST,OPTIONS'}
+        def ms(route):
+            req = route.request; u = req.url
+            if req.method == 'OPTIONS': return route.fulfill(status=204, headers=CORS)
+            if '/authorize' in u:
+                q = parse_qs(urlparse(u).query)
+                assert q['code_challenge_method'] == ['S256'] and 'Files.ReadWrite.AppFolder' in q['scope'][0]
+                return route.fulfill(status=302, headers={'Location': q['redirect_uri'][0] + '?code=CODE1&state=' + q['state'][0]})
+            if u.endswith('/token'):
+                assert 'code_verifier=' in req.post_data and 'code=CODE1' in req.post_data
+                return route.fulfill(status=200, headers={**CORS, 'Content-Type': 'application/json'}, body=json.dumps({'access_token': 'AT', 'refresh_token': 'RT', 'expires_in': 3600}))
+            if u.endswith('/v1.0/me'):
+                return route.fulfill(status=200, headers={**CORS, 'Content-Type': 'application/json'}, body=json.dumps({'userPrincipalName': 'jaeger@outlook.de'}))
+            if u.endswith(':/content') and req.method == 'PUT':
+                cloud['body'] = req.post_data; cloud['etag'] += 1
+                return route.fulfill(status=200, headers={**CORS, 'Content-Type': 'application/json'}, body=json.dumps({'eTag': str(cloud['etag'])}))
+            if '/approot:/revier-daten.json' in u:
+                if cloud['body'] is None: return route.fulfill(status=404, headers=CORS, body='{}')
+                return route.fulfill(status=200, headers={**CORS, 'Content-Type': 'application/json'}, body=json.dumps({'eTag': str(cloud['etag']), '@microsoft.graph.downloadUrl': 'https://dl.example.test/f'}))
+            if u.startswith('https://dl.example.test/'):
+                return route.fulfill(status=200, headers={**CORS, 'Content-Type': 'application/json'}, body=cloud['body'])
+            route.fulfill(status=404, headers=CORS, body='{}')
+        for pat in ['https://login.microsoftonline.com/**', 'https://graph.microsoft.com/**', 'https://dl.example.test/**']:
+            page.route(pat, ms)
+        page.click('#sheet-body [data-act=sync-setup]')
+        page.wait_for_selector('#dlg[open]')
+        page.fill('#dlg input[name=clientId]', 'kein-guid')
+        page.click('#dlg button[type=submit]')
+        assert page.is_visible('#dlg[open]'), 'ungültige ID muss abgelehnt werden'
+        page.fill('#dlg input[name=clientId]', '11111111-2222-3333-4444-555555555555')
+        page.click('#dlg button[type=submit]')
+        page.wait_for_selector('#dlg', state='hidden')
+        page.click('#sheet-body [data-act=sync-login]')
+        page.wait_for_function("window.__map !== undefined && location.search === ''", timeout=15000)
+        page.wait_for_function("document.querySelector('#toast').textContent.includes('angemeldet')", timeout=15000)
+        page.wait_for_function("localStorage.getItem('jagd.sync.last') !== null", timeout=15000)
+        data = json.loads(cloud['body'])
+        kinds = sorted({r['kind'] for r in data['records']})
+        assert kinds == ['einrichtung', 'ereignis', 'revier'] and len(data['records']) >= 7, (kinds, len(data['records']))
+        page.click('#tabs [data-tab=mehr]')
+        assert 'jaeger@outlook.de' in page.inner_text('#sync-info'), page.inner_text('#sync-info')
+        # anderes Gerät legt einen Eintrag in OneDrive ab -> manueller Abgleich holt ihn
+        d2 = json.loads(cloud['body']); d2['records'].append({'id': 'fremd-1', 'kind': 'einrichtung', 'typ': 'kirrung', 'name': 'Kirrung vom Mac', 'lat': 51.605, 'lng': 8.305, 'updatedAt': 9e12, 'createdAt': 1})
+        cloud['body'] = json.dumps(d2); cloud['etag'] += 1
+        page.click('#sheet-body [data-act=sync-now]')
+        page.wait_for_function("document.querySelector('#toast').textContent.includes('übernommen')", timeout=15000)
+        got = page.evaluate("(async () => { const s = await import('./js/store.js'); return s.get('fremd-1') && s.get('fremd-1').name; })()")
+        assert got == 'Kirrung vom Mac', got
+        step('OneDrive: Einrichtung, Anmeldung (PKCE), Hoch- und Herunterladen')
+
         # --- Löschen aus dem Bearbeiten-Formular (Rückfrage im zweiten Dialog) ---
         page.click('#sheet-close')
         page.evaluate("""(() => { const g = [...window.__map.layers].find(l => l.cfgId === 'einrichtungen');
@@ -223,7 +276,7 @@ def main():
         page.click('#dlg2 button[type=submit]')
         page.wait_for_selector('#dlg', state='hidden')
         counts = page.evaluate("""(async () => { const s = await import('./js/store.js'); return [s.all('einrichtung').length, s.all('einrichtung', {includeDeleted:true}).length]; })()""")
-        assert counts == [2, 3], counts
+        assert counts == [3, 4], counts
         step('Löschen mit Rückfrage (Grabstein bleibt für Sync erhalten)')
 
         # --- Persistenz: neu laden ---
@@ -231,7 +284,7 @@ def main():
         page.wait_for_function('window.__map !== undefined')
         page.wait_for_timeout(300)
         counts = page.evaluate("""(async () => { const s = await import('./js/store.js'); return ['revier','einrichtung','ereignis'].map(k => s.all(k).length); })()""")
-        assert counts == [3, 2, 1], counts
+        assert counts == [3, 3, 1], counts
         step('Daten nach Neuladen vorhanden (IndexedDB)')
 
         # --- Desktop-Layout ---
@@ -260,7 +313,8 @@ def main():
         browser.close()
     httpd.shutdown()
 
-    real = [e for e in errors if 'favicon' not in e]
+    # erwartet: Validierungsfehler aus dem Test und 404 für die noch nicht vorhandene OneDrive-Datei
+    real = [e for e in errors if 'favicon' not in e and 'Anwendungs-ID' not in e and 'status of 404' not in e]
     if real:
         print('\nFEHLER im Browser:'); [print('  ', e) for e in real]; sys.exit(1)
     print('\nAlle E2E-Tests bestanden, keine JS-Fehler.')

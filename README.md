@@ -1,97 +1,130 @@
-# Revier – eigene Jagd-App (Stufe 1)
+# Revier – eigene Jagd-App
 
-Web-App (PWA) für iPhone, Mac und Windows aus **einer** Codebasis. Gedacht nur für den Eigengebrauch.
+Web-App (PWA) für iPhone, Mac und Windows aus **einer** Codebasis, nur für den Eigengebrauch.
 Sie läuft im Browser und lässt sich wie eine App auf den Home-Bildschirm bzw. ins Dock legen.
 
-## Was Stufe 1 kann
+Adresse: **https://henningd1.github.io/Revier-App/**
+
+## Funktionen
 
 | Bereich | Funktionen |
 |---|---|
 | Karten | Topo Deutschland (basemap.de, BKG), OpenStreetMap, OpenTopoMap (Höhenlinien), Luftbild NRW (DOP 20 cm), Flurstücke NRW (ALKIS, ab Zoom 16) |
-| Reviere | Grenze per Antippen zeichnen oder mit „GPS-Punkt“ ablaufen, Eckpunkte verschieben, einfügen und löschen, Fläche in ha, Farbe, Notizen |
-| Einrichtungen | Hochsitz, Kanzel, Drückjagdbock, Kirrung, Salzlecke, Wildkamera, Falle … mit Blickrichtung (auch per Kompass), Route dorthin (Apple Karten) |
-| Ereignisse | Sichtung, Abschuss, Fehlschuss/Nachsuche, Fallwild, Wildunfall, Wildschaden, Fährte. Mit Wildart, Anzahl, Geschlecht, Altersklasse, Gewicht, Zeit und der Einrichtung, von der aus beobachtet wurde |
-| Auswertung | Liste nach Jagdjahr (1.4.–31.3.), Revier, Ereignis und Wildart. Streckenübersicht, CSV-Export für Excel |
-| GPS & Kompass | Eigene Position mit Genauigkeitskreis, Anzeige „Im Revier: …“, Entfernung und Richtung zu jedem Punkt, Blickrichtungs-Kegel per Kompass |
-| Austausch | Backup als GeoJSON. Export als KML (Google Earth) und GPX (GPS-Geräte). Import von GeoJSON, KML und GPX (abgelaufene GPX-Tracks werden zu Revieren) |
-| Offline | App startet ohne Netz. Bereits angesehene Kartenkacheln bleiben verfügbar (bis ca. 6000 Kacheln) |
+| Reviere | Grenze per Antippen zeichnen oder mit „GPS-Punkt“ ablaufen, Eckpunkte verschieben, einfügen und löschen, Fläche in ha |
+| Einrichtungen | Hochsitz, Kanzel, Drückjagdbock, Bodensitz, Kirrung, Salzlecke, Suhle, Fütterung, Wildacker, Wildkamera, Falle, Parkplatz – jeweils mit eigenem Symbol, optional mit Blickrichtung (auch per Kompass); Route dorthin |
+| Ereignisse | Sichtung, Abschuss, Fehlschuss/Nachsuche, Fallwild, Wildunfall, Wildschaden, Fährte. Mit Wildart (Tiersymbol), Anzahl, Geschlecht, Altersklasse, Gewicht, Zeit und Einrichtung |
+| Auswertung | Liste nach Jagdjahr (1.4.–31.3.), Revier, Ereignis und Wildart; Streckenübersicht; CSV-Export für Excel |
+| GPS & Kompass | Position mit Genauigkeitskreis, „Im Revier: …“, Entfernung und Richtung zu jedem Punkt; Kompass als halbrunde Gradskala am unteren Rand |
+| OneDrive (Stufe 2) | Automatischer Abgleich zwischen Geräten über eine Datei im App-Ordner deines OneDrive |
+| Offline (Stufe 3) | Offline-Pakete je Revier, Kartenausschnitt oder als NRW-Übersicht; dazu Zwischenspeicher für angesehene Kacheln |
+| Austausch | Backup als GeoJSON, Export KML/GPX, Import GeoJSON/KML/GPX (abgelaufene GPX-Tracks werden zu Revieren) |
 
 **Bedienung:** Langes Drücken auf die Karte (PC: Rechtsklick) öffnet ein Schnellmenü an dieser Stelle.
-Der GPS-Knopf hat drei Stufen: GPS an und folgen → wieder zentrieren → GPS aus.
+GPS-Knopf: 1× an und folgen → 2× wieder zentrieren → 3× aus. Antippen der Statuszeile zeigt Koordinaten und Genauigkeit.
 
-## Installation über GitHub Pages (einmalig, ca. 10 Minuten)
+## Installation auf den Geräten
 
-1. Auf github.com ein neues Repository anlegen, z. B. `revier`. Es muss **öffentlich** sein, weil GitHub Pages für private Repos ein Bezahl-Konto voraussetzt.
-   Im Repo liegt nur der Programmcode. Deine Reviere und Ereignisse speichert die App ausschließlich auf deinen Geräten.
-2. Den Inhalt dieses Ordners hochladen (Weboberfläche: „Add file“ → „Upload files“, alle Dateien und Ordner hineinziehen). Den Ordner `tests/` braucht man nicht hochzuladen.
-3. Unter **Settings → Pages → Source: „Deploy from a branch“**, Branch `main`, Ordner `/ (root)` wählen und speichern.
-4. Nach 1–2 Minuten ist die App unter `https://<dein-name>.github.io/revier/` erreichbar.
+**iPhone:** Adresse in Safari öffnen → Teilen → **„Zum Home-Bildschirm“**. Danach die App **nur noch über das Home-Symbol** öffnen
+(eigener, dauerhafter Speicher; was in Safari selbst eingetragen wurde, sieht die App nicht).
+**Mac:** Safari → Ablage → **„Zum Dock hinzufügen“**. **Windows:** Edge/Chrome → „App installieren“ in der Adressleiste.
 
-**iPhone:** Die Adresse in Safari öffnen → Teilen → **„Zum Home-Bildschirm“**. Danach die App **nur noch über das Home-Symbol** öffnen.
-iOS gibt der Home-Bildschirm-App einen eigenen Speicher, der nicht automatisch gelöscht wird. Was in Safari selbst eingetragen wurde, sieht die App nicht.
-Beim ersten Tippen auf GPS bzw. Kompass fragt iOS nach der Erlaubnis.
+**Updates:** Änderungen ins Repo pushen und in `sw.js` die Zeile `const VERSION = '…'` hochzählen. Die App meldet dann „Neue Version verfügbar → Neu laden“.
 
-**Mac:** In Safari Ablage → **„Zum Dock hinzufügen“**.
-**Windows:** In Edge oder Chrome das Symbol „App installieren“ in der Adressleiste wählen.
+## GPS zeigt falschen Standort (iPhone)
 
-**Updates:** Geänderte Dateien hochladen und in `sw.js` die Zeile `const VERSION = '…'` hochzählen.
-Die App meldet dann „Neue Version verfügbar → Neu laden“.
+Die App nimmt, was iOS liefert. Ist bei den Ortungsdiensten für **Safari-Websites** (gilt auch für Home-Bildschirm-Apps)
+**„Genauer Standort“** ausgeschaltet, gibt iOS nur einen ungefähren Ort weiter (Abweichung oft mehrere Kilometer).
+Prüfen: *Einstellungen → Datenschutz & Sicherheit → Ortungsdienste → Safari-Websites* → „Beim Verwenden der App“ und „Genauer Standort“ einschalten, dann in der App GPS aus- und wieder einschalten.
+Die App erkennt solche groben Positionen (> 500 m Ungenauigkeit): Statuszeile „⚠ ungenau“, grauer Punkt, Hinweis.
+Außerdem nimmt sie keine zwischengespeicherten Altpositionen an und verwirft kurzzeitig viel schlechtere Fixes (z. B. GPS-Abriss im Wald).
 
-## Datenaustausch zwischen iPhone und PC (bis Stufe 2)
+## OneDrive einrichten (Stufe 2, einmalig)
 
-„Mehr“ → **Komplett-Backup**. Auf dem iPhone öffnet sich das Teilen-Menü; dort „In Dateien sichern“ wählen und den OneDrive-Ordner angeben.
-Auf dem anderen Gerät „Datei importieren“ wählen. Beim Import gewinnt pro Eintrag der **jüngere Stand**, es entstehen also keine Duplikate.
-Genau diese Logik nutzt später auch der automatische Abgleich.
+Die App spricht direkt mit Microsoft (Anmeldung per OAuth 2.0 mit PKCE, Zugriff über Microsoft Graph). Dafür braucht sie eine
+eigene, kostenlose **App-Registrierung**. Sie erhält nur die Berechtigung `Files.ReadWrite.AppFolder`, sieht also ausschließlich
+den Ordner `OneDrive/Apps/<App-Name>/` und sonst nichts von deinem OneDrive.
+
+1. **Verzeichnis (Tenant) besorgen.** Microsoft lässt neue App-Registrierungen nur noch innerhalb eines Microsoft-Entra-Verzeichnisses zu,
+   nicht mehr direkt unter einem privaten Microsoft-Konto. Wege: kostenloses Azure-Konto anlegen (portal.azure.com, mit dem privaten
+   Microsoft-Konto; dabei wird ein „Standardverzeichnis“ erzeugt – App-Registrierungen kosten nichts) oder das Microsoft-365-Entwicklerprogramm.
+2. **portal.azure.com → Microsoft Entra ID → App-Registrierungen → Neue Registrierung**
+   - Name: `Revier-App`
+   - Unterstützte Kontotypen: **„Nur persönliche Microsoft-Konten“** (oder „… beliebiges Organisationsverzeichnis und persönliche Microsoft-Konten“)
+   - Umleitungs-URI: Plattform **„Single-Page-Webanwendung (SPA)“**, Adresse `https://henningd1.github.io/Revier-App/` (genau so, mit Schrägstrich am Ende)
+3. **„Anwendungs-ID (Client)“** kopieren.
+4. Unter **API-Berechtigungen → Berechtigung hinzufügen → Microsoft Graph → Delegierte Berechtigungen**: `Files.ReadWrite.AppFolder`
+   und `offline_access` hinzufügen (`User.Read` ist schon da).
+5. In der App: **Mehr → OneDrive-Abgleich → Einrichtung** → ID eintragen → **Bei OneDrive anmelden**.
+   Auf jedem Gerät einmal nötig – oder die ID in `js/config.js` (`ONEDRIVE_CLIENT_ID`) eintragen, dann gilt sie überall. Die ID ist kein Geheimnis.
+
+**Wie der Abgleich arbeitet:** beim Öffnen der App, 15 s nach jeder Änderung, bei wiederkehrendem Netz und per Knopf.
+Datei holen → je Eintrag gewinnt der jüngere Stand (auch Löschungen werden als „Grabstein“ übertragen) → Gesamtstand zurückschreiben.
+Geschrieben wird mit `If-Match: eTag`: Hat ein anderes Gerät die Datei inzwischen geändert, beginnt der Abgleich automatisch von vorn.
+**Hinweis:** Microsoft gibt Web-Apps eine Anmeldung, die höchstens 24 Stunden erneuert werden kann. Danach einmal auf „Bei OneDrive anmelden“ tippen
+(meist ohne erneute Passworteingabe). Ohne Netz arbeitet die App normal weiter und gleicht später ab.
+
+**Ohne App-Registrierung** geht es auch von Hand: Mehr → Komplett-Backup → im Teilen-Menü „In Dateien sichern“ → OneDrive-Ordner;
+auf dem anderen Gerät „Datei importieren“. Auch dabei gewinnt je Eintrag der neuere Stand.
+
+## Offline-Karten (Stufe 3)
+
+Mehr → **Neues Offline-Paket laden** (oder im Revier-Popup „Offline speichern“). Gebiet wählen:
+
+- **Revier** (+300 m Rand): Topokarte Zoom 10–17, Luftbild NRW Zoom 13–19 (volle 20-cm-Auflösung), Flurstücke Zoom 16–18
+- **Aktueller Kartenausschnitt**: dieselben Ebenen für das, was gerade zu sehen ist
+- **Übersicht NRW**: Topokarte bis Zoom 12 – zum Zurechtfinden ohne Netz
+
+Vor dem Laden zeigt die App Kachelzahl und geschätzte Größe (ein Revier von ca. 500 ha: etwa 1.000–2.000 Kacheln, 50–120 MB).
+Jedes Paket liegt in einem eigenen Speicherbereich und kann einzeln gelöscht werden. Der Service Worker sucht jede Kachel zuerst in
+den Paketen – ohne Netz erscheint die Karte also automatisch.
+**Warum nur diese Ebenen?** basemap.de (CC BY 4.0) und die NRW-Geobasisdaten (Datenlizenz Deutschland Zero) erlauben das Speichern.
+Die OpenStreetMap- und OpenTopoMap-Server verbieten Massen-Downloads; davon bleiben nur angesehene Kacheln im Zwischenspeicher.
 
 ## Aufbau (für eigene Änderungen)
 
 ```
 index.html            Oberfläche (Karte, Knöpfe, Leisten, Dialoge)
-css/app.css           Gestaltung, Handy-first, ab 900 px Breite Seitenleiste
-js/config.js          ALLE Einstellungen: Kartendienste, Einrichtungs-/Ereignistypen, Wildarten, Farben
-js/app.js             Ablaufsteuerung: Karte, Popups, Formulare, Listen, Import/Export
-js/store.js           Datenhaltung in IndexedDB + Merge-Logik
+css/app.css           Gestaltung, Handy zuerst, ab 900 px Breite Seitenleiste
+js/config.js          ALLE Einstellungen: Kartendienste, Offline-Zoomstufen, Typen, Wildarten, Farben, OneDrive-ID
+js/app.js             Ablaufsteuerung: Karte, Popups, Formulare, Listen, Import/Export, Offline, Sync
+js/store.js           Datenhaltung in IndexedDB + Merge-Logik (jüngster Stand gewinnt, Grabsteine)
 js/geo.js             Fläche, Punkt-in-Polygon, Entfernung, Richtung, Jagdjahr
+js/tiles.js           Kachel-Mathematik (Web-Mercator) und Kachel-URLs – für Karte UND Offline-Pakete
+js/offline.js         Offline-Pakete planen, laden, löschen
+js/sync.js            OneDrive: Anmeldung (OAuth PKCE), Lesen/Schreiben über Graph, Abgleich
 js/io.js              GeoJSON / KML / GPX / CSV
+js/icons.js           Symbole: Einrichtungen (eigene Piktogramme), Tiere (aus „Jagdsignale üben“)
+js/compass.js         Kompass-Gradskala
 js/draw.js            Polygon-Editor für Reviergrenzen
-js/gps.js             GPS (watchPosition) und Kompass (DeviceOrientation)
+js/gps.js             GPS (watchPosition, Plausibilitätsprüfung) und Kompass (DeviceOrientation)
 js/ui.js              Dialoge, Toasts, Teilen/Download
-sw.js                 Service Worker: Offline-Start + Kachel-Zwischenspeicher
+sw.js                 Service Worker: Offline-Start, Kachel-Zwischenspeicher, Offline-Pakete
 tests/                Unit-Tests (Node) und Browser-Tests (Playwright)
 ```
 
-**Datenmodell:** Jeder Eintrag ist ein Objekt mit `id` (UUID), `kind` (`revier` | `einrichtung` | `ereignis`), `createdAt`, `updatedAt` und `device`.
-Reviere speichern `geometry` als GeoJSON-Polygon, Punkte speichern `lat`/`lng`.
-Gelöscht wird per „Grabstein“ (`deleted: true`). Nur so erkennt ein zweites Gerät beim Abgleich, dass ein Eintrag gelöscht wurde und nicht bloß noch fehlt.
-Die Zuordnung eines Punktes zum Revier wird **nicht gespeichert, sondern jedes Mal berechnet** (Punkt-in-Polygon). Ändert man eine Reviergrenze, stimmt die Zuordnung also automatisch.
+**Datenmodell:** Jeder Eintrag hat `id` (UUID), `kind` (`revier` | `einrichtung` | `ereignis`), `createdAt`, `updatedAt`, `device`.
+Reviere speichern `geometry` als GeoJSON-Polygon, Punkte `lat`/`lng`. Gelöscht wird per Grabstein (`deleted: true`).
+Die Revierzuordnung eines Punktes wird jedes Mal berechnet (Punkt-in-Polygon), nicht gespeichert.
 
-**Eigene Wildarten oder Einrichtungstypen** ergänzt man in `js/config.js`.
+**Warum eigene Kachel-URLs?** Der Cache findet Kacheln nur über die exakte URL. Deshalb erzeugt eine einzige Funktion
+(`tileUrl` in `js/tiles.js`) die URLs für die Kartenanzeige und für den Paket-Download.
 
-## Grenzen der Stufe 1
+## Grenzen
 
-- Offline sind nur Kartenausschnitte verfügbar, die vorher online angesehen wurden. Das gezielte Herunterladen von Regionen kommt in Stufe 3.
-  Tipp bis dahin: Das Revier zu Hause im WLAN einmal in allen benötigten Zoomstufen ansehen.
-- Der Kompass zeigt auf magnetisch Nord (in NRW ca. 3° Abweichung). Die Genauigkeit hängt vom Gerät ab; wenn er falsch anzeigt, das iPhone in einer Acht bewegen.
-- Kein GPS im Hintergrund: Die Position wird nur aktualisiert, solange die App geöffnet ist.
-- Mehrteilige Reviere (MultiPolygon, z. B. aus einem Import) werden angezeigt, lassen sich aber noch nicht in der Grenze bearbeiten.
-
-## Nächste Stufen
-
-- **Stufe 2 – OneDrive-Sync:** Anmeldung mit dem privaten Microsoft-Konto (MSAL.js). Die App liest und schreibt eine Datei `Apps/Revier/daten.json` über Microsoft Graph und gleicht sie mit `mergeRecords()` ab.
-  Dafür ist einmalig eine kostenlose App-Registrierung im Microsoft-Entra-Portal nötig, mit der GitHub-Pages-Adresse als Redirect-URI.
-- **Stufe 3 – Offline-Pakete NRW:** Grundkarte als PMTiles-Datei (selbst erzeugt aus OSM bzw. basemap.de), Luftbild und Flurstücke nur fürs eigene Revier.
-  Die Pakete werden in der App heruntergeladen und im Gerätespeicher (OPFS) abgelegt.
+- Kein GPS im Hintergrund (Web-Apps erhalten die Position nur, solange sie geöffnet sind).
+- Kompass zeigt magnetisch Nord (in NRW ca. 3° Abweichung); bei Fehlanzeige das iPhone in einer Acht bewegen.
+- Mehrteilige Reviere (MultiPolygon aus Importen) werden angezeigt, aber noch nicht in der Grenze bearbeitet.
+- Luftbild und Flurstücke derzeit nur NRW; andere Länder lassen sich in `js/config.js` ergänzen (eigene WMS-Dienste der Länder).
 
 ## Lizenzen der Kartendaten
 
 basemap.de: © GeoBasis-DE / BKG, CC BY 4.0 · OpenStreetMap: © OpenStreetMap-Mitwirkende, ODbL · OpenTopoMap: CC-BY-SA ·
-Luftbild und Flurstücke NRW: Geobasis NRW, Datenlizenz Deutschland – Zero 2.0.
-Die Quellenangaben stehen in der Karte unten rechts und dürfen nicht entfernt werden.
-Die OSM- und OpenTopoMap-Server sind spendenfinanziert. Für den Eigengebrauch ist die Nutzung in Ordnung, für Massen-Downloads nicht.
+Luftbild und Flurstücke NRW: Geobasis NRW, Datenlizenz Deutschland – Zero 2.0 · Tiersymbole: aus „Jagdsignale üben“.
 
 ## Tests
 
 ```
-node tests/unit.test.mjs          # Geometrie, Merge, Import/Export
-python3 tests/e2e_test.py         # kompletter Ablauf im Headless-Chrome (mit Leaflet-Ersatz)
+node tests/unit.test.mjs          # Geometrie, Merge, Import/Export, Kachel-Mathematik
+node tests/sync.test.mjs          # OneDrive-Abgleich mit simuliertem OneDrive (zwei Geräte, Konflikte, PKCE)
+python3 tests/e2e_test.py         # kompletter Ablauf im Headless-Chrome (Leaflet-Ersatz, simulierte Kachel- und Microsoft-Server)
 ```

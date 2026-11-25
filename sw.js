@@ -8,7 +8,7 @@
 //
 // Bei Änderungen am App-Code VERSION hochzählen, damit Browser das Update erkennen.
 
-const VERSION = '0.1.0';
+const VERSION = '0.2.0';
 const SHELL_CACHE = 'shell-' + VERSION;
 const CDN_CACHE = 'cdn-v1';
 const TILE_CACHE = 'tiles-v1';
@@ -17,7 +17,7 @@ const TILE_MAX = 6000;           // ca. 6000 Kacheln ≈ 100–300 MB je nach Ka
 const SHELL_FILES = [
   './', './index.html', './manifest.webmanifest', './css/app.css',
   './js/app.js', './js/config.js', './js/store.js', './js/geo.js', './js/io.js',
-  './js/draw.js', './js/gps.js', './js/ui.js', './js/compass.js',
+  './js/draw.js', './js/gps.js', './js/ui.js', './js/compass.js', './js/icons.js',
   './icons/icon-192.png', './icons/icon-512.png', './icons/apple-touch-icon.png'
 ];
 const CDN_FILES = [

@@ -1,7 +1,7 @@
 // Zentrale Konfiguration: Kartenquellen, Typen, Farben.
 // Alles, was man später anpassen möchte, steht hier – nicht verstreut im Code.
 
-export const APP_VERSION = '0.1.0';
+export const APP_VERSION = '0.2.0';
 
 // Startansicht, falls noch keine gespeicherte Ansicht existiert (ungefähr Mitte NRW)
 export const DEFAULT_VIEW = { lat: 51.47, lng: 7.55, zoom: 8 };
@@ -105,7 +105,7 @@ export const EREIGNIS_TYPEN = [
 ];
 
 export const WILDARTEN = [
-  'Rehwild', 'Schwarzwild', 'Rotwild', 'Damwild', 'Sikawild', 'Muffelwild',
+  'Rehwild', 'Schwarzwild', 'Rotwild', 'Damwild', 'Sikawild', 'Muffelwild', 'Gamswild',
   'Fuchs', 'Dachs', 'Waschbär', 'Marderhund', 'Steinmarder', 'Baummarder', 'Iltis',
   'Feldhase', 'Wildkaninchen', 'Fasan', 'Rebhuhn', 'Ringeltaube',
   'Wildgans', 'Stockente', 'Rabenkrähe', 'Elster', 'Nutria', 'Wolf', 'Sonstige'

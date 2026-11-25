@@ -14,6 +14,7 @@ import { toGeoJSON, toKML, toGPX, toCSV, parseAny } from './io.js';
 import { PolygonEditor } from './draw.js';
 import { Positioning } from './gps.js';
 import { buildDial } from './compass.js';
+import { einrSvg, animalSvg } from './icons.js';
 import {
   $, esc, toast, openForm, confirmDialog, sheet, deliverFile, fmtDateTime, toLocalInput, options
 } from './ui.js';
@@ -45,6 +46,9 @@ function savePrefs() {
 const typEinr = id => EINRICHTUNG_TYPEN.find(t => t.id === id) || EINRICHTUNG_TYPEN[EINRICHTUNG_TYPEN.length - 1];
 const typEv = id => EREIGNIS_TYPEN.find(t => t.id === id) || EREIGNIS_TYPEN[EREIGNIS_TYPEN.length - 1];
 const reviere = () => store.all('revier');
+// kleine runde Symbole für Listen und Popups
+const miniEinr = e => `<span class="mini" style="--c:${typEinr(e.typ).color}">${einrSvg(typEinr(e.typ).id)}</span>`;
+const miniEv = v => `<span class="mini" style="--c:${typEv(v.typ).color}">${animalSvg(v.wildart) || ''}</span>`;
 const revierOf = p => (typeof p.lat === 'number' ? findRevier([p.lng, p.lat], reviere()) : null);
 
 // ---------------------------------------------------------------------------
@@ -205,18 +209,18 @@ function einrIcon(e) {
   const dir = Number.isFinite(e.blick) ? `<i class="dir" style="transform:rotate(${e.blick}deg)"></i>` : '';
   return L.divIcon({
     className: 'pin-wrap',
-    html: `${dir}<div class="pin" style="--c:${t.color}"><span>${esc(t.glyph)}</span></div>`,
+    html: `${dir}<div class="pin" style="--c:${t.color}">${einrSvg(t.id)}</div>`,
     iconSize: [34, 34], iconAnchor: [17, 17], popupAnchor: [0, -14]
   });
 }
 
 function ereigIcon(ev) {
   const t = typEv(ev.typ);
-  const abbr = (ev.wildart || '?').slice(0, 2);
+  const inner = animalSvg(ev.wildart) || `<span>${esc((ev.wildart || '?').slice(0, 2))}</span>`;
   return L.divIcon({
     className: 'ev-wrap',
-    html: `<div class="ev ev-${esc(ev.typ)}" style="--c:${t.color}"><span>${esc(abbr)}</span></div>`,
-    iconSize: [26, 26], iconAnchor: [13, 13], popupAnchor: [0, -11]
+    html: `<div class="ev ev-${esc(ev.typ)}" style="--c:${t.color}">${inner}</div>`,
+    iconSize: [30, 30], iconAnchor: [15, 15], popupAnchor: [0, -13]
   });
 }
 
@@ -282,7 +286,7 @@ function einrPopup(e) {
   const r = revierOf(e);
   const count = store.all('ereignis').filter(v => v.einrichtungId === e.id).length;
   return `<div class="pop">
-    <div class="pop-title">${esc(e.name || t.name)}</div>
+    <div class="pop-title">${miniEinr(e)}${esc(e.name || t.name)}</div>
     <div class="pop-sub">${esc(t.name)}${r ? ' · ' + esc(r.name) : ''}${Number.isFinite(e.blick) ? ` · Blick ${compassName(e.blick)} (${e.blick}°)` : ''}</div>
     ${distanceLine(e)}
     ${count ? `<div class="pop-sub">${count} Ereignis(se) von hier erfasst</div>` : ''}
@@ -307,7 +311,7 @@ function ereigPopup(v) {
     v.gewicht ? String(v.gewicht).replace('.', ',') + ' kg' : ''
   ].filter(Boolean).join(' · ');
   return `<div class="pop">
-    <div class="pop-title"><span class="swatch round" style="background:${t.color}"></span>${esc(t.name)}: ${esc(v.wildart || '')}</div>
+    <div class="pop-title">${miniEv(v)}${esc(t.name)}: ${esc(v.wildart || '')}</div>
     <div class="pop-sub">${fmtDateTime(v.zeit)}${r ? ' · ' + esc(r.name) : ''}</div>
     ${details ? `<div class="pop-sub">${esc(details)}</div>` : ''}
     ${ei ? `<div class="pop-sub">Von: ${esc(ei.name || typEinr(ei.typ).name)}</div>` : ''}
@@ -671,7 +675,7 @@ function reviereTab() {
     ${list.length ? `<ul class="cards">${items}</ul>` : '<p class="empty">Noch keine Reviere. Zeichne eines ein oder importiere eine KML-/GPX-Datei.</p>'}
     ${einr.length ? `<h3>Einrichtungen (${einr.length})</h3><ul class="cards">${einr
       .sort((a, b) => (a.name || '').localeCompare(b.name || '', 'de'))
-      .map(e => `<li class="card" data-act="ei-zoom" data-id="${e.id}"><span class="swatch round" style="background:${typEinr(e.typ).color}"></span>
+      .map(e => `<li class="card" data-act="ei-zoom" data-id="${e.id}">${miniEinr(e)}
         <div class="card-main"><b>${esc(e.name || typEinr(e.typ).name)}</b><small>${esc(typEinr(e.typ).name)}${revierOf(e) ? ' · ' + esc(revierOf(e).name) : ''}</small></div></li>`).join('')}</ul>` : ''}`;
 }
 
@@ -702,13 +706,14 @@ function ereignisseTab() {
       <button class="btn primary" data-act="add-ev">+ Ereignis</button>
       <button class="btn" data-act="export-csv">Als Excel-Liste (CSV)</button>
     </div>
+    <div class="legend">${EREIGNIS_TYPEN.map(t => `<span><i style="background:${t.color}"></i>${esc(t.name)}</span>`).join('')}</div>
     <p class="summary">${list.length} Einträge · ${sicht} Stück gesichtet</p>
     ${streckeHtml}
     ${list.length ? `<ul class="cards">${list.map(e => {
       const t = typEv(e.typ);
       const r = revierOf(e);
       return `<li class="card" data-act="ev-zoom" data-id="${e.id}">
-        <span class="swatch round" style="background:${t.color}"></span>
+        ${miniEv(e)}
         <div class="card-main"><b>${esc(t.name)}: ${esc(e.wildart || '')}${e.anzahl > 1 ? ' (' + e.anzahl + ')' : ''}</b>
         <small>${fmtDateTime(e.zeit)}${r ? ' · ' + esc(r.name) : ''}</small></div></li>`;
     }).join('')}</ul>` : '<p class="empty">Keine Ereignisse für diesen Filter.</p>'}`;

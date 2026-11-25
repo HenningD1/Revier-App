@@ -269,3 +269,20 @@ dialog::backdrop { background: rgba(0,0,0,.45); }
 .pop-sub { color: var(--muted); font-size: 12.5px; }
 .pop-notes { margin-top: 6px; white-space: pre-wrap; font-size: 13px; }
 .pop-btns { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+
+/* Offline-Download */
+#progress {
+  position: fixed; left: 50%; transform: translateX(-50%); top: calc(var(--safe-top) + 50px); z-index: 2500;
+  width: min(420px, 92vw); background: #fff; border-radius: 12px; padding: 10px 12px; box-shadow: 0 4px 16px rgba(0,0,0,.3);
+}
+#progress[hidden] { display: none; }
+.progress-track { height: 8px; background: #e4e7e1; border-radius: 4px; overflow: hidden; margin: 8px 0; }
+#progress-bar { height: 100%; width: 0; background: var(--accent); transition: width .2s; }
+.progress-row { display: flex; justify-content: space-between; align-items: center; font-size: 13px; color: var(--muted); }
+.checks { border: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 6px; }
+.checks legend { font-size: 13px; color: var(--muted); padding: 0; margin-bottom: 4px; }
+.checks:disabled { opacity: .45; }
+.dlg-body label.chk { flex-direction: row; align-items: center; gap: 8px; color: var(--text); font-size: 15px; }
+.chk input { width: 20px; height: 20px; flex: none; }
+.chk small { color: var(--muted); }
+.warnc { color: #c25e00; }

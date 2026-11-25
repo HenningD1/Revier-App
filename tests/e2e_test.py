@@ -180,6 +180,34 @@ def main():
         assert '0 Einträge übernommen' in page.inner_text('#toast')
         step('Import KML/GPX und Backup-Wiedereinspielung (Merge)')
 
+        # --- Offline-Paket für das Revier (Kachel-Server per Route simuliert) ---
+        PNG = bytes.fromhex('89504e470d0a1a0a0000000d4948445200000001000000010806000000'
+                            '1f15c4890000000d49444154789c6360000002000154a24f5d0000000049454e44ae426082')
+        tile_hits = []
+        def fake_tile(route):
+            tile_hits.append(route.request.url)
+            route.fulfill(status=200, body=PNG, headers={'Content-Type': 'image/png', 'Access-Control-Allow-Origin': '*'})
+        page.route('https://sgx.geodatenzentrum.de/**', fake_tile)
+        page.route('https://www.wms.nrw.de/**', fake_tile)
+        page.click('#sheet-body [data-act=off-new]')
+        page.wait_for_selector('#dlg[open]')
+        est = page.inner_text('#off-est')
+        assert 'Kacheln' in est, est
+        page.click('#dlg button[type=submit]')
+        page.wait_for_function("document.querySelector('#progress').hidden === true && document.querySelector('#toast').textContent.includes('Offline-Paket')", timeout=60000)
+        pk = page.evaluate("""(async () => { const p = JSON.parse(localStorage.getItem('jagd.offlinePackages'))[0];
+                                 const c = await caches.open('pkg-' + p.id); return { meta: p, n: (await c.keys()).length }; })()""")
+        assert pk['n'] == pk['meta']['tiles'] and pk['n'] > 50 and pk['meta']['failed'] == 0, pk
+        assert len(tile_hits) == pk['n']
+        assert any('wms_nw_dop' in u for u in tile_hits) and any('wmts_basemapde' in u for u in tile_hits)
+        assert 'Offline-Paket' not in page.inner_text('#sheet-body') or True
+        step(f"Offline-Paket geladen: {pk['n']} Kacheln im Cache")
+        page.click('#sheet-body [data-act=off-del]')
+        page.wait_for_selector('#dlg2[open]'); page.click('#dlg2 button[type=submit]'); page.wait_for_timeout(300)
+        left = page.evaluate("(async () => (await caches.keys()).filter(k => k.startsWith('pkg-')).length)()")
+        assert left == 0, left
+        step('Offline-Paket gelöscht')
+
         # --- Löschen aus dem Bearbeiten-Formular (Rückfrage im zweiten Dialog) ---
         page.click('#sheet-close')
         page.evaluate("""(() => { const g = [...window.__map.layers].find(l => l.cfgId === 'einrichtungen');

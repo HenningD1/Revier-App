@@ -4,7 +4,8 @@
 import * as store from './store.js';
 import {
   APP_VERSION, DEFAULT_VIEW, BASE_LAYERS, OVERLAY_LAYERS, EINRICHTUNG_TYPEN, EREIGNIS_TYPEN,
-  WILDARTEN, GESCHLECHT, ALTERSKLASSEN, REVIER_FARBEN
+  WILDARTEN, GESCHLECHT, ALTERSKLASSEN, REVIER_FARBEN, NRW_BOUNDS, NRW_OVERVIEW,
+  OFFLINE_BUFFER_M, OFFLINE_WARN_TILES, OFFLINE_MAX_TILES
 } from './config.js';
 import {
   geometryArea, formatArea, findRevier, distance, bearing, compassName, formatDistance,
@@ -15,6 +16,8 @@ import { PolygonEditor } from './draw.js';
 import { Positioning } from './gps.js';
 import { buildDial } from './compass.js';
 import { einrSvg, animalSvg } from './icons.js';
+import { tileUrl, geomBounds, buffer } from './tiles.js';
+import * as offline from './offline.js';
 import {
   $, esc, toast, openForm, confirmDialog, sheet, deliverFile, fmtDateTime, toLocalInput, options
 } from './ui.js';
@@ -75,24 +78,26 @@ async function init() {
 // Karte
 // ---------------------------------------------------------------------------
 
+// Eigene Kachel-Ebene: die URL jeder Kachel kommt aus tileUrl() (js/tiles.js).
+// Dieselbe Funktion erzeugt die URLs für Offline-Pakete – nur so findet der Cache sie wieder.
+let UrlTileLayer = null;
+
 function makeLayer(cfg) {
-  const common = {
+  if (!UrlTileLayer) {
+    UrlTileLayer = L.TileLayer.extend({
+      getTileUrl(coords) { return tileUrl(this.options.cfg, coords.z, coords.x, coords.y); }
+    });
+  }
+  const opts = {
+    cfg,
     attribution: cfg.attribution,
     maxZoom: 21,
     maxNativeZoom: cfg.maxNativeZoom || 19,
-    minZoom: cfg.minZoom || 0
+    minZoom: cfg.minZoom || 0,
+    tileSize: cfg.type === 'wms' ? (cfg.tileSize || 512) : 256   // 512er-Kacheln halbieren die WMS-Anfragen
   };
-  if (cfg.bounds) common.bounds = L.latLngBounds(cfg.bounds);
-  let layer;
-  if (cfg.type === 'wms') {
-    // 512er-Kacheln halbieren die Zahl der WMS-Anfragen gegenüber 256er-Kacheln
-    layer = L.tileLayer.wms(cfg.url, {
-      ...common, layers: cfg.layers, format: cfg.format, transparent: !!cfg.transparent,
-      version: '1.3.0', tileSize: 512
-    });
-  } else {
-    layer = L.tileLayer(cfg.url, { ...common, subdomains: cfg.subdomains || 'abc' });
-  }
+  if (cfg.bounds) opts.bounds = L.latLngBounds(cfg.bounds);
+  const layer = new UrlTileLayer(cfg.url, opts);
   layer.cfgId = cfg.id;
   return layer;
 }
@@ -277,6 +282,7 @@ function revierPopup(r, at) {
       <button class="btn sm" data-act="add-ei-at" data-lat="${at.lat}" data-lng="${at.lng}">+ Einrichtung hier</button>
       <button class="btn sm" data-act="rv-edit" data-id="${r.id}">Bearbeiten</button>
       <button class="btn sm" data-act="rv-geom" data-id="${r.id}">Grenze ändern</button>
+      <button class="btn sm" data-act="rv-offline" data-id="${r.id}">Offline speichern</button>
       <button class="btn sm danger" data-act="rv-del" data-id="${r.id}">Löschen</button>
     </div></div>`;
 }
@@ -731,6 +737,10 @@ function mehrTab() {
       <button class="btn" data-act="import">Datei importieren (GeoJSON, KML, GPX)</button>
     </div>
     <p class="hint">Auf dem iPhone öffnet sich das Teilen-Menü – dort „In Dateien sichern“ und den OneDrive-Ordner wählen. Der automatische OneDrive-Abgleich folgt in Stufe 2.</p>
+    <h3>Offline-Karten</h3>
+    ${offlineList()}
+    <div class="sheet-actions col"><button class="btn primary" data-act="off-new">Neues Offline-Paket laden</button></div>
+    <p class="hint">Gespeichert werden Topokarte (basemap.de), Luftbild NRW und Flurstücke NRW. OpenStreetMap und OpenTopoMap erlauben keine Massen-Downloads; davon bleiben nur angesehene Kacheln im Zwischenspeicher.</p>
     <h3>Speicher</h3>
     <p id="storage-info" class="hint">wird ermittelt …</p>
     <div class="sheet-actions col">
@@ -759,6 +769,112 @@ async function fillStorageInfo() {
     if (tiles && typeof tiles.count === 'number') parts.push(`${tiles.count} Kartenkacheln offline verfügbar`);
   } catch (_) { /* nicht kritisch */ }
   el.innerHTML = parts.map(esc).join('<br>') || 'keine Angaben verfügbar';
+}
+
+// ---------------------------------------------------------------------------
+// Offline-Pakete (Stufe 3)
+// ---------------------------------------------------------------------------
+
+const OFFLINE_LAYERS = [...BASE_LAYERS, ...OVERLAY_LAYERS].filter(c => c.offline);
+const fmtMB = b => (b / 1e6).toLocaleString('de-DE', { maximumFractionDigits: b < 1e7 ? 1 : 0 }) + ' MB';
+let offlineAbort = null;
+
+function offlineList() {
+  const list = offline.listPackages();
+  if (!list.length) return '<p class="empty">Noch keine Offline-Pakete.</p>';
+  return `<ul class="cards">${list.map(p => `<li class="card">
+    <div class="card-main"><b>${esc(p.name)}</b>
+    <small>${p.tiles} Kacheln${p.bytes ? ' · ' + fmtMB(p.bytes) : ''}${p.failed ? ` · ${p.failed} fehlgeschlagen` : ''} · ${new Date(p.date).toLocaleDateString('de-DE')}<br>${p.layers.map(l => esc(l.name.split(' (')[0])).join(', ')}</small></div>
+    <button class="btn sm" data-act="off-show" data-id="${p.id}">Zeigen</button>
+    <button class="btn sm danger" data-act="off-del" data-id="${p.id}">Löschen</button></li>`).join('')}</ul>`;
+}
+
+/** Gebiet und Ebenen aus dem Formular */
+function offlineSelection(form) {
+  const area = form.elements.area.value;
+  let bounds, layers, name;
+  if (area === 'nrw') {
+    bounds = NRW_BOUNDS;
+    layers = [{ cfg: BASE_LAYERS.find(c => c.id === 'basemap'), ...NRW_OVERVIEW }];
+    name = 'Übersicht NRW';
+  } else {
+    if (area === 'view') {
+      const b = map.getBounds();
+      bounds = [[b.getSouth(), b.getWest()], [b.getNorth(), b.getEast()]];
+      name = 'Kartenausschnitt';
+    } else {
+      const r = store.get(area);
+      bounds = buffer(geomBounds(r.geometry), OFFLINE_BUFFER_M);
+      name = r.name;
+    }
+    layers = OFFLINE_LAYERS.filter(c => form.elements['L_' + c.id] && form.elements['L_' + c.id].checked)
+      .map(c => ({ cfg: c, minZoom: c.offline.minZoom, maxZoom: c.offline.maxZoom }));
+  }
+  return { bounds, layers, name };
+}
+
+function offlineForm(revierId = '') {
+  const rv = reviere().sort((a, b) => a.name.localeCompare(b.name, 'de'));
+  const first = revierId || (rv[0] ? rv[0].id : 'view');
+  return openForm({
+    title: 'Offline-Paket laden',
+    submit: 'Herunterladen',
+    body: `
+      <label>Gebiet<select name="area">
+        ${rv.map(r => `<option value="${r.id}"${r.id === first ? ' selected' : ''}>Revier: ${esc(r.name)} (+${OFFLINE_BUFFER_M} m)</option>`).join('')}
+        <option value="view"${first === 'view' ? ' selected' : ''}>Aktueller Kartenausschnitt</option>
+        <option value="nrw">Übersicht ganz NRW (Topokarte bis Zoom ${NRW_OVERVIEW.maxZoom})</option>
+      </select></label>
+      <fieldset class="checks" id="off-layers"><legend>Ebenen</legend>
+        ${OFFLINE_LAYERS.map(c => `<label class="chk"><input type="checkbox" name="L_${c.id}" checked> ${esc(c.name)} <small>Zoom ${c.offline.minZoom}–${c.offline.maxZoom}</small></label>`).join('')}
+      </fieldset>
+      <p class="hint" id="off-est">…</p>
+      <p class="hint">Tipp: im WLAN laden. Die Pakete bleiben auf diesem Gerät, bis du sie löschst.</p>`,
+    onOpen: form => {
+      const upd = () => {
+        const sel = offlineSelection(form);
+        form.querySelector('#off-layers').disabled = form.elements.area.value === 'nrw';
+        const est = offline.estimate(sel.bounds, sel.layers);
+        const warn = est.tiles > OFFLINE_WARN_TILES;
+        form.querySelector('#off-est').innerHTML = `<b${warn ? ' class="warnc"' : ''}>${est.tiles.toLocaleString('de-DE')} Kacheln, ca. ${fmtMB(est.bytes)}</b>` +
+          (est.tiles > OFFLINE_MAX_TILES ? ' – zu groß, bitte kleineres Gebiet wählen' : warn ? ' – das dauert eine Weile' : '');
+      };
+      form.addEventListener('change', upd);
+      upd();
+    },
+    onSubmit: async (d, form) => {
+      const sel = offlineSelection(form);
+      if (!sel.layers.length) throw new Error('Bitte mindestens eine Ebene wählen');
+      const est = offline.estimate(sel.bounds, sel.layers);
+      if (est.tiles > OFFLINE_MAX_TILES) throw new Error('Gebiet zu groß');
+      if (!est.tiles) throw new Error('Im gewählten Gebiet gibt es keine Kacheln dieser Ebenen (Luftbild/Flurstücke nur in NRW)');
+      setTimeout(() => runOfflineDownload(sel), 0);
+    }
+  });
+}
+
+async function runOfflineDownload(sel) {
+  if (offlineAbort) { toast('Es läuft schon ein Download'); return; }
+  const box = $('#progress');
+  box.hidden = false;
+  $('#progress-label').textContent = `Lade „${sel.name}“ …`;
+  offlineAbort = new AbortController();
+  try {
+    const meta = await offline.download({
+      ...sel, signal: offlineAbort.signal,
+      onProgress: (done, total, failed) => {
+        $('#progress-bar').style.width = (100 * done / total).toFixed(1) + '%';
+        $('#progress-count').textContent = `${done.toLocaleString('de-DE')} / ${total.toLocaleString('de-DE')}${failed ? ` · ${failed} Fehler` : ''}`;
+      }
+    });
+    toast(`Offline-Paket „${meta.name}“ gespeichert: ${meta.tiles} Kacheln${meta.bytes ? ', ' + fmtMB(meta.bytes) : ''}${meta.failed ? `, ${meta.failed} fehlgeschlagen` : ''}`, { ms: 8000 });
+  } catch (e) {
+    toast(e.message, { ms: 5000 });
+  } finally {
+    offlineAbort = null;
+    box.hidden = true;
+    if (sheet.isOpen && state.tab === 'mehr') renderTab('mehr');
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -865,6 +981,8 @@ function bindUi() {
   $('#place-me').onclick = () => { if (pos.last) placeAt(pos.last); };
   $('#place-cancel').onclick = endPlace;
 
+  $('#progress-cancel').onclick = () => { if (offlineAbort) offlineAbort.abort(); };
+
   // Datei-Import
   $('#file-input').onchange = async e => {
     const f = e.target.files[0];
@@ -943,6 +1061,21 @@ async function handleAction(act, d) {
     case 'rv-geom': if (rec) startDraw(rec.id); break;
     case 'rv-del': if (rec) deleteRecord(rec.id); break;
     case 'rv-zoom': if (rec) zoomTo(rec); break;
+    case 'rv-offline': if (rec) { map.closePopup(); offlineForm(rec.id); } break;
+    case 'off-new': offlineForm(); break;
+    case 'off-del': {
+      const p = offline.listPackages().find(x => x.id === d.id);
+      if (p && await confirmDialog('Offline-Paket löschen?', `„${p.name}“ wird von diesem Gerät entfernt.`, 'Löschen')) {
+        await offline.deletePackage(p.id);
+        renderTab('mehr');
+      }
+      break;
+    }
+    case 'off-show': {
+      const p = offline.listPackages().find(x => x.id === d.id);
+      if (p) { openTab('map'); map.fitBounds(L.latLngBounds(p.bounds)); }
+      break;
+    }
 
     // Einrichtungen
     case 'ei-edit': if (rec) { map.closePopup(); einrForm(rec); } break;

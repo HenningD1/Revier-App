@@ -124,4 +124,39 @@ test('CSV: BOM, Semikolon, Anführungszeichen, Dezimalkomma', () => {
   assert.ok(row.includes(';2026/27;'));
 });
 
+import { lng2x, lat2y, bbox3857, tileUrl, planPackage, tileRange, geomBounds, buffer as bufferB } from '../js/tiles.js';
+
+const proj = (lat, lng) => [lng * Math.PI / 180 * 6378137, Math.log(Math.tan(Math.PI / 4 + lat * Math.PI / 360)) * 6378137];
+
+test('Kachel enthält den Punkt (256 und 512, mehrere Zoomstufen)', () => {
+  for (const ts of [256, 512]) for (const z of [8, 13, 16, 19]) {
+    const lat = 51.6789, lng = 8.3456, x = lng2x(lng, z, ts), y = lat2y(lat, z, ts);
+    const [minx, miny, maxx, maxy] = bbox3857(z, x, y, ts), [px, py] = proj(lat, lng);
+    assert.ok(px >= minx && px <= maxx && py >= miny && py <= maxy, `ts=${ts} z=${z}`);
+  }
+  assert.equal(lng2x(8.3, 16), Math.floor(188.3 / 360 * 65536));
+});
+
+test('Kachel-URLs: XYZ mit Subdomain wie Leaflet, WMS mit BBOX', () => {
+  const otm = { type: 'xyz', url: 'https://{s}.t.de/{z}/{x}/{y}.png', subdomains: 'abc' };
+  assert.equal(tileUrl(otm, 5, 2, 3), 'https://c.t.de/5/2/3.png');
+  const wms = { type: 'wms', url: 'https://w.de/wms', layers: 'nw_dop_rgb', format: 'image/jpeg', transparent: false, tileSize: 512 };
+  const u = tileUrl(wms, 1, 0, 0);
+  assert.ok(u.includes('CRS=EPSG:3857') && u.includes('WIDTH=512') && u.includes('LAYERS=nw_dop_rgb') && u.includes('FORMAT=image%2Fjpeg'));
+  assert.ok(u.endsWith('BBOX=-20037508.34,-20037508.34,20037508.34,20037508.34'), u);
+});
+
+test('Paketplan: Zählung = erzeugte URLs, Begrenzung auf NRW', () => {
+  const b = bufferB(geomBounds({ type: 'Polygon', coordinates: [sq] }), 300);
+  const base = { id: 'b', type: 'xyz', url: 'https://x/{z}/{x}/{y}.png' };
+  const nrw = { id: 'n', type: 'wms', url: 'https://w', layers: 'l', format: 'image/png', tileSize: 512, bounds: [[50.3, 5.85], [52.55, 9.5]] };
+  const plan = planPackage(b, [{ cfg: base, minZoom: 12, maxZoom: 16 }, { cfg: nrw, minZoom: 14, maxZoom: 18 }]);
+  assert.equal([...plan.urls()].length, plan.total);
+  assert.equal(new Set(plan.urls()).size, plan.total);
+  const outside = planPackage([[48, 11], [48.1, 11.1]], [{ cfg: nrw, minZoom: 14, maxZoom: 15 }]);
+  assert.equal(outside.total, 0);
+  const r = tileRange(b, 16);
+  assert.ok(r.x1 >= r.x0 && r.y1 >= r.y0);
+});
+
 console.log(`\n${n} Tests bestanden`);

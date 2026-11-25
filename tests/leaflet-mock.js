@@ -83,6 +83,7 @@
     removeLayer(l) { this.layers.delete(l); l._map = null; return this; }
     hasLayer(l) { return this.layers.has(l); }
     getCenter() { return this._center; }
+    getBounds() { const c = this._center, d = 0.01; return { getSouth: () => c.lat - d, getNorth: () => c.lat + d, getWest: () => c.lng - d, getEast: () => c.lng + d }; }
     getZoom() { return this._zoom; }
     setView(ll, z) { this._center = latLng(ll); if (z !== undefined) this._zoom = z; this.fire('moveend'); return this; }
     panTo(ll) { return this.setView(ll); }
@@ -103,5 +104,6 @@
     DomEvent: { stop() {} }
   };
   L.tileLayer.wms = (url, o) => Object.assign(new Layer(o), { url });
+  L.TileLayer = { extend(proto) { return function (url, o) { const l = new Layer(o); Object.assign(l, proto); l.url = url; return l; }; } };
   window.L = L;
 })();

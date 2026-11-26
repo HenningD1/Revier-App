@@ -53,6 +53,18 @@ Beide Geräte nutzen dieselbe Datei **`Revier-Daten.json`** in iCloud Drive. Ein
 Je Eintrag gewinnt der jüngere Stand; Löschungen werden als „Grabstein“ mitgeschrieben. Doppelte Einträge entstehen nicht.
 Die Statuszeile im Bereich „Mehr“ zeigt, ob es Änderungen gibt, die noch nicht in der Datei stehen.
 
+## Revier mit Mitpächtern teilen
+
+Im Revier-Popup oder in der Revierliste **Teilen** wählen. Mitgeschickt werden das Revier und alles, was innerhalb der
+Grenze liegt: Einrichtungen (abwählbar), Ereignisse wahlweise keine / laufendes Jagdjahr / alle, Notizen abwählbar.
+Auf dem iPhone öffnet sich das Teilen-Menü (Nachrichten, WhatsApp, Mail, AirDrop …).
+
+- **Format „Revier-App“ (.json):** Der Mitpächter öffnet https://henningd1.github.io/Revier-App/ und liest die Datei mit
+  „Datei importieren“ ein. Seine übrigen Daten bleiben unberührt. Weil die Kennungen erhalten bleiben, kann man Änderungen
+  hin- und herschicken: Es werden dieselben Einträge aktualisiert (der neuere Stand gewinnt), nichts wird doppelt.
+  Gelöschte Einrichtungen werden mitgeteilt und verschwinden auch beim Mitpächter.
+- **KML / GPX:** für Google Earth, GPS-Geräte und andere Jagd-Apps (ohne Abgleich).
+
 ## Versionen und Wiederherstellen
 
 `Revier-Daten.json` wird bei jedem Abgleich überschrieben. Damit trotzdem nichts verloren geht, führt die App einen

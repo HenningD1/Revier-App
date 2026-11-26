@@ -9,9 +9,9 @@ import {
 } from './config.js';
 import {
   geometryArea, formatArea, findRevier, distance, bearing, compassName, formatDistance,
-  jagdjahr, jagdjahrRange, openRing
+  jagdjahr, jagdjahrRange, openRing, pointInGeometry
 } from './geo.js';
-import { toGeoJSON, toKML, toGPX, toCSV, parseAny, toSyncFile } from './io.js';
+import { toGeoJSON, toKML, toGPX, toCSV, parseAny, toSyncFile, toShareFile } from './io.js';
 import { PolygonEditor } from './draw.js';
 import { Positioning } from './gps.js';
 import { buildDial } from './compass.js';
@@ -290,6 +290,7 @@ function revierPopup(r, at) {
       <button class="btn sm" data-act="add-ev-at" data-lat="${at.lat}" data-lng="${at.lng}">+ Ereignis hier</button>
       <button class="btn sm" data-act="add-ei-at" data-lat="${at.lat}" data-lng="${at.lng}">+ Einrichtung hier</button>
       <button class="btn sm" data-act="rv-edit" data-id="${r.id}">Bearbeiten</button>
+      <button class="btn sm" data-act="rv-share" data-id="${r.id}">Teilen</button>
       <button class="btn sm" data-act="rv-geom" data-id="${r.id}">Grenze ändern</button>
       <button class="btn sm" data-act="rv-offline" data-id="${r.id}">Offline speichern</button>
       <button class="btn sm danger" data-act="rv-del" data-id="${r.id}">Löschen</button>
@@ -683,6 +684,7 @@ function reviereTab() {
     return `<li class="card" data-act="rv-zoom" data-id="${r.id}">
       <span class="swatch" style="background:${esc(r.color)}"></span>
       <div class="card-main"><b>${esc(r.name)}</b><small>${formatArea(geometryArea(r.geometry))} · ${nE} Einrichtungen</small></div>
+      <button class="btn sm" data-act="rv-share" data-id="${r.id}">Teilen</button>
       <button class="btn sm" data-act="rv-edit" data-id="${r.id}">Bearbeiten</button></li>`;
   }).join('');
   return `<div class="sheet-actions"><button class="btn primary" data-act="add-rv">+ Revier zeichnen</button>
@@ -889,6 +891,69 @@ async function runOfflineDownload(sel) {
     box.hidden = true;
     if (sheet.isOpen && state.tab === 'mehr') renderTab('mehr');
   }
+}
+
+// ---------------------------------------------------------------------------
+// Revier teilen (Mitpächter)
+// ---------------------------------------------------------------------------
+// Ein Revier mit seinen Einrichtungen (und wahlweise Ereignissen) als eigene Datei.
+// Zugeordnet wird geometrisch: alles, was innerhalb der Reviergrenze liegt.
+
+function shareRecords(r, { einr, ev, notes }) {
+  const inside = p => typeof p.lat === 'number' && pointInGeometry([p.lng, p.lat], r.geometry);
+  const range = ev === 'jj' ? jagdjahrRange(jagdjahr(Date.now())) : null;
+  let recs = [r];
+  if (einr) recs = recs.concat(store.all('einrichtung').filter(inside));
+  if (ev !== 'none') recs = recs.concat(store.all('ereignis').filter(e => inside(e) && (!range || (e.zeit >= range.from && e.zeit < range.to))));
+  if (!notes) recs = recs.map(x => ({ ...x, notes: '' }));
+  // Löschungen mitgeben (nur Kennung + Zeit), damit gelöschte Hochsitze auch beim Mitpächter verschwinden
+  const tombs = store.all(null, { includeDeleted: true }).filter(x => x.deleted && x.kind !== 'revier');
+  return { live: recs, all: recs.concat(tombs) };
+}
+
+const safeName = t => t.replace(/[^\p{L}\p{N}]+/gu, '-').replace(/^-|-$/g, '').slice(0, 40) || 'Revier';
+
+function shareForm(r) {
+  const nE = shareRecords(r, { einr: true, ev: 'none', notes: true }).live.length - 1;
+  return openForm({
+    title: `Revier „${r.name}“ teilen`,
+    submit: 'Teilen',
+    body: `
+      <fieldset class="checks"><legend>Inhalt</legend>
+        <label class="chk"><input type="checkbox" name="einr" checked> Einrichtungen im Revier (${nE})</label>
+        <label class="chk"><input type="checkbox" name="notes" checked> Notizen mitschicken</label>
+      </fieldset>
+      <label>Ereignisse<select name="ev">
+        <option value="none" selected>keine</option>
+        <option value="jj">aus dem laufenden Jagdjahr ${jagdjahr(Date.now())}</option>
+        <option value="all">alle</option>
+      </select></label>
+      <fieldset class="checks"><legend>Format</legend>
+        <label class="chk"><input type="radio" name="fmt" value="json" checked> <span><b>Revier-App</b> – Mitpächter liest es mit „Datei importieren“ ein; Änderungen lassen sich hin- und herschicken</span></label>
+        <label class="chk"><input type="radio" name="fmt" value="kml"> <span><b>KML</b> – für Google Earth und andere Jagd-Apps</span></label>
+        <label class="chk"><input type="radio" name="fmt" value="gpx"> <span><b>GPX</b> – für GPS-Geräte</span></label>
+      </fieldset>
+      <p class="hint" id="share-info"></p>`,
+    onOpen: form => {
+      const upd = () => {
+        const sel = { einr: form.elements.einr.checked, ev: form.elements.ev.value, notes: form.elements.notes.checked };
+        const c = store.countKinds(shareRecords(r, sel).live);
+        form.querySelector('#share-info').innerHTML = `Enthält: 1 Revier, ${c.einrichtung} Einrichtungen, ${c.ereignis} Ereignisse.` +
+          (sel.notes ? '' : ' <b class="warnc">Ohne Notizen: Ändert der Mitpächter einen Eintrag und schickt ihn zurück, fehlen dort deine Notizen.</b>');
+      };
+      form.addEventListener('change', upd);
+      upd();
+    },
+    // synchron, damit das Teilen-Menü (Nachrichten, WhatsApp, Mail, AirDrop …) geöffnet werden darf
+    onSubmit: d => {
+      const sel = { einr: d.einr === 'on', ev: d.ev, notes: d.notes === 'on' };
+      const { live, all } = shareRecords(r, sel);
+      const base = `Revier-${safeName(r.name)}-${today()}`;
+      if (d.fmt === 'kml') deliverFile(base + '.kml', 'application/vnd.google-earth.kml+xml', toKML(live, r.name));
+      else if (d.fmt === 'gpx') deliverFile(base + '.gpx', 'application/gpx+xml', toGPX(live));
+      else deliverFile(base + '.json', 'application/json', toShareFile(all, { revier: r.name, revierId: r.id, from: store.getDeviceId(), createdAt: new Date().toISOString() }));
+    }
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -1118,14 +1183,16 @@ async function importFile(file) {
   const text = await file.text();
   let res;
   try { res = parseAny(file.name, text); } catch (e) { toast('Import fehlgeschlagen: ' + e.message, { ms: 6000 }); return; }
-  const c = k => res.records.filter(r => r.kind === k).length;
+  const c = k => res.records.filter(r => r.kind === k && !r.deleted).length;
   const msg = `${c('revier')} Reviere, ${c('einrichtung')} Einrichtungen, ${c('ereignis')} Ereignisse` +
     (res.skipped ? ` (${res.skipped} nicht verwendbare Objekte übersprungen)` : '');
   if (!res.records.length) { toast('Nichts Verwendbares gefunden. ' + msg, { ms: 6000 }); return; }
-  const ownBackup = res.records.some(r => r.id && r.updatedAt);   // eigenes Backup/Abgleich-Datei -> Wiederherstellen sinnvoll
+  // Wiederherstellen nur bei eigenen Backups – ein geteiltes Revier würde sonst alle anderen Daten entfernen
+  const ownBackup = !res.share && res.records.some(r => r.id && r.updatedAt);
   const choice = await openForm({
-    title: 'Datei einlesen', submit: 'Übernehmen', dialog: '#dlg2',
+    title: res.share ? `Geteiltes Revier „${res.share.revier}“` : 'Datei einlesen', submit: 'Übernehmen', dialog: '#dlg2',
     body: `<p>Gefunden: ${esc(msg)}.</p>
+      ${res.share ? '<p class="hint">Neue Einträge werden ergänzt; bereits vorhandene nur aktualisiert, wenn sie in der Datei neuer sind. Deine übrigen Daten bleiben unberührt.</p>' : ''}
       <label class="chk"><input type="radio" name="mode" value="merge" checked> <span><b>Zusammenführen</b> – Neues ergänzen; vorhandene Einträge nur ersetzen, wenn die Datei neuer ist</span></label>
       ${ownBackup ? `<label class="chk"><input type="radio" name="mode" value="restore"> <span><b>Genau diesen Stand wiederherstellen</b> – alles andere entfernen (vorher wird gesichert)</span></label>` : ''}`,
     onSubmit: async () => true
@@ -1286,6 +1353,7 @@ async function handleAction(act, d) {
     case 'rv-geom': if (rec) startDraw(rec.id); break;
     case 'rv-del': if (rec) deleteRecord(rec.id); break;
     case 'rv-zoom': if (rec) zoomTo(rec); break;
+    case 'rv-share': if (rec) { map.closePopup(); shareForm(rec); } break;
     case 'rv-offline': if (rec) { map.closePopup(); offlineForm(rec.id); } break;
     case 'off-new': offlineForm(); break;
     case 'ver-save': {

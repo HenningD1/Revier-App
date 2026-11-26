@@ -43,7 +43,7 @@ export function fromGeoJSON(input) {
   const obj = typeof input === 'string' ? JSON.parse(input) : input;
   // Abgleich-Datei (iCloud/OneDrive): alle Datensätze 1:1, inkl. Löschungen (Grabsteine)
   if (obj && obj.app === 'revier' && Array.isArray(obj.records)) {
-    return { records: obj.records.filter(r => r && OWN_KINDS.includes(r.kind)), skipped: 0 };
+    return { records: obj.records.filter(r => r && OWN_KINDS.includes(r.kind)), skipped: 0, share: obj.share || null };
   }
   const features = obj.type === 'FeatureCollection' ? obj.features
     : obj.type === 'Feature' ? [obj]
@@ -242,6 +242,15 @@ export function toCSV(ereignisse, { revierName = () => '', einrichtungName = () 
 /** Inhalt der Abgleich-Datei: kompletter Stand inkl. Grabsteinen, damit auch Löschungen ankommen */
 export function toSyncFile(records, device) {
   return JSON.stringify({ schema: 1, app: 'revier', savedAt: new Date().toISOString(), device, records });
+}
+
+/**
+ * Geteiltes Revier (für Mitpächter): gleiches Format wie die Abgleich-Datei, dazu "share".
+ * Die Kennungen (id) bleiben erhalten – schickt der Mitpächter das Revier später geändert zurück,
+ * werden dieselben Einträge aktualisiert statt doppelt angelegt.
+ */
+export function toShareFile(records, share) {
+  return JSON.stringify({ schema: 1, app: 'revier', share, savedAt: new Date().toISOString(), records });
 }
 
 /** Erkennt das Format anhand von Dateiname und Inhalt */

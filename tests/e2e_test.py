@@ -345,6 +345,48 @@ def main():
         names = page.evaluate("(async () => { const s = await import('./js/store.js'); return s.all('einrichtung').map(r => r.name); })()")
         assert 'Neu am iPhone' not in names and 'Versehentlich' not in names, names
         step('Backup-Datei als exakter Stand wiederhergestellt')
+
+        # --- Revier mit Mitpächter teilen ---
+        page.click('#tabs [data-tab=reviere]')
+        card = page.locator('#sheet-body li.card', has_text='Eigenjagd Test')
+        card.locator('[data-act=rv-share]').click()
+        page.wait_for_selector('#dlg[open]')
+        assert 'Enthält: 1 Revier' in page.inner_text('#share-info')
+        page.select_option('#dlg select[name=ev]', 'all')
+        with page.expect_download() as dl:
+            page.click('#dlg button[type=submit]')
+        assert dl.value.suggested_filename.startswith('Revier-Eigenjagd-Test-') and dl.value.suggested_filename.endswith('.json'), dl.value.suggested_filename
+        shared = json.load(open(dl.value.path()))
+        live = [r for r in shared['records'] if not r.get('deleted')]
+        assert shared['share']['revier'] == 'Eigenjagd Test'
+        assert sum(r['kind'] == 'revier' for r in live) == 1
+        names = {r.get('name') for r in live if r['kind'] == 'einrichtung'}
+        assert 'Kirrung vom Mac' in names and 'Leiter 3' not in names, names   # Leiter 3 liegt im anderen Revier
+        step(f"Revier geteilt: {len(live)} Einträge (nur innerhalb der Grenze)")
+        # KML-Variante
+        card.locator('[data-act=rv-share]').click()
+        page.wait_for_selector('#dlg[open]'); page.check('#dlg input[value=kml]')
+        with page.expect_download() as dl:
+            page.click('#dlg button[type=submit]')
+        assert '<kml' in open(dl.value.path()).read() and dl.value.suggested_filename.endswith('.kml')
+
+        # Mitpächter: frisches Gerät liest das geteilte Revier ein
+        ctx3 = browser.new_context(service_workers='block', accept_downloads=True)
+        p3 = ctx3.new_page()
+        p3.on('pageerror', lambda e: errors.append('pageerror(mitpaechter): ' + str(e)))
+        p3.route('https://unpkg.com/leaflet@1.9.4/dist/leaflet.js', lambda r: r.fulfill(status=200, content_type='application/javascript', body=MOCK))
+        p3.route('https://unpkg.com/leaflet@1.9.4/dist/leaflet.css', lambda r: r.fulfill(status=200, content_type='text/css', body=''))
+        p3.goto(f'http://127.0.0.1:{PORT}/index.html'); p3.wait_for_function('window.__map !== undefined')
+        p3.click('#tabs [data-tab=reviere]')
+        with p3.expect_file_chooser() as fc:
+            p3.click('#sheet-body [data-act=import]')
+        fc.value.set_files(files=[{'name': 'Revier.json', 'mimeType': 'application/json', 'buffer': json.dumps(shared).encode()}])
+        p3.wait_for_selector('#dlg2[open]')
+        assert 'Geteiltes Revier' in p3.inner_text('#dlg2') and p3.locator('#dlg2 input[value=restore]').count() == 0
+        p3.click('#dlg2 button[type=submit]')
+        p3.wait_for_function("document.querySelector('#sheet-body').textContent.includes('Eigenjagd Test')", timeout=5000)
+        ctx3.close()
+        step('Mitpächter hat das geteilte Revier eingelesen')
         page.click('#sheet-close')
 
         # --- Desktop-Layout ---

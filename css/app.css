@@ -12,10 +12,7 @@
   --safe-bottom: env(safe-area-inset-bottom, 0px);
   /* Abstand der Leistentexte zum Home-Balken: etwas weniger als die volle Sicherheitszone, wie bei nativen Apps */
   --tabs-pad: max(calc(var(--safe-bottom) - 14px), 4px);
-  /* iOS-Fehler bei Home-Bildschirm-Apps: der Bildbereich endet um die Statusleisten-Höhe zu früh.
-     --gap wird in js/app.js gemessen (sonst 0) und schiebt alles Untere wieder an den echten Bildschirmrand. */
-  --gap: 0px;
-  --bottom: calc(var(--tabs-h) + var(--tabs-pad) - var(--gap));
+  --bottom: calc(var(--tabs-h) + var(--tabs-pad));
 }
 
 * { box-sizing: border-box; }
@@ -86,7 +83,7 @@ body {
 #compass-dial .dir.n { fill: #ff5a4a; }
 #compass-dial .index { fill: #d9822b; stroke: #fff; stroke-width: 1.5; }
 #compass-dial .read { fill: #fff; font: 800 22px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
-body.mode-draw #compass-dial, body.mode-place #compass-dial { bottom: calc(150px + var(--tabs-pad) - var(--gap)); }
+body.mode-draw #compass-dial, body.mode-place #compass-dial { bottom: calc(150px + var(--tabs-pad)); }
 
 /* ---------- Fadenkreuz & Werkzeugleisten ---------- */
 #crosshair {
@@ -112,7 +109,7 @@ body.mode-draw #compass-dial, body.mode-place #compass-dial { bottom: calc(150px
 
 body.mode-draw #tabs, body.mode-place #tabs,
 body.mode-draw #btn-add, body.mode-place #btn-add { display: none; }
-body.mode-draw #fabs, body.mode-place #fabs { bottom: calc(150px + var(--tabs-pad) - var(--gap)); }
+body.mode-draw #fabs, body.mode-place #fabs { bottom: calc(150px + var(--tabs-pad)); }
 .drawing { cursor: crosshair; }
 
 /* ---------- Untere Navigation ---------- */
@@ -301,13 +298,12 @@ details.more summary { cursor: pointer; font-weight: 600; color: var(--green-2);
 .card.ver .reason { color: var(--muted); font-size: 13px; }
 .card.ver .card-main small { display: block; }
 
-/* ---------- iOS-Ausgleich (siehe --gap) ----------
-   iOS zeichnet fest positionierte (fixed) Elemente nur im zu kurzen Fensterbereich. Das Dokument selbst
-   wird aber bis zum echten Bildschirmrand gezeichnet. Deshalb wird es um --gap verlängert, und die
-   Leisten hängen am Dokumentende (absolute) statt am Fensterende (fixed). */
-html.ios-gap, html.ios-gap body { height: calc(100% + var(--gap)); overscroll-behavior: none; }
-html.ios-gap body { position: relative; }
-html.ios-gap #tabs, html.ios-gap .toolbar { position: absolute; bottom: 0; }
+/* ---------- iOS-Fehler (Home-Bildschirm-App) ----------
+   Manchmal ist das Fenster um die Statusleisten-Höhe zu kurz (z. B. nach dem Öffnen der Tastatur).
+   iOS zeichnet und bedient dann nur diesen kürzeren Bereich. Alles bleibt deshalb darin; der Home-Balken
+   liegt in dem Fall ohnehin im toten Streifen darunter, also braucht die Leiste keinen Extra-Abstand.
+   js/app.js versucht zusätzlich, iOS zum Neuberechnen zu bringen (healViewport). */
+html.ios-gap { --tabs-pad: 2px; background: var(--green); }
 
 /* ---------- Handy: größere Schrift, schmalere Leiste, mehr Platz für Listen ---------- */
 @media (max-width: 700px) {

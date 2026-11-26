@@ -64,11 +64,21 @@ const revierOf = p => (typeof p.lat === 'number' ? findRevier([p.lng, p.lat], re
 let screenInfo = null;
 function applyIosGap() {
   screenInfo = measureIosGap();
-  const before = getComputedStyle(document.documentElement).getPropertyValue('--gap').trim();
-  document.documentElement.style.setProperty('--gap', screenInfo.gap + 'px');
+  const had = document.documentElement.classList.contains('ios-gap');
   document.documentElement.classList.toggle('ios-gap', screenInfo.gap > 0);
-  if (screenInfo.gap > 0) window.scrollTo(0, 0);   // Dokument ist jetzt länger als das Fenster: oben festhalten
-  if (map && before !== screenInfo.gap + 'px') map.invalidateSize();   // Karte hat jetzt eine andere Höhe
+  if (map && had !== screenInfo.gap > 0) map.invalidateSize();   // Leistenhöhe hat sich geändert
+}
+
+// iOS-Fehler: Fenster bleibt (meist nach der Tastatur) um ~60 px zu kurz. Ein kurzes Aus- und Einblenden
+// eines fensterhohen Elements mit erzwungener Neuberechnung dazwischen bringt WebKit dazu, die echte
+// Höhe neu zu übernehmen. Danach wird neu gemessen; klappt es nicht, bleibt die sichere Anordnung.
+function healViewport() {
+  if (!measureIosGap().gap) return applyIosGap();
+  const b = document.body;
+  b.style.display = 'none';
+  void b.offsetHeight;   // erzwungene Neuberechnung, ohne dazwischen zu zeichnen
+  b.style.display = '';
+  setTimeout(() => { applyIosGap(); if (map) map.invalidateSize(); }, 250);
 }
 
 async function init() {
@@ -80,9 +90,10 @@ async function init() {
   applyIosGap();
   initMap();
   ['resize', 'orientationchange'].forEach(ev => window.addEventListener(ev, () => setTimeout(applyIosGap, 300)));
-  // verlängertes Dokument (iOS-Ausgleich) darf nicht verrutschen, wenn man auf der Leiste wischt
-  window.addEventListener('scroll', () => { if (screenInfo && screenInfo.gap > 0 && window.scrollY) window.scrollTo(0, 0); }, { passive: true });
-  document.addEventListener('visibilitychange', () => { if (!document.hidden) setTimeout(applyIosGap, 300); });
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) setTimeout(healViewport, 300); });
+  // nach dem Schließen der Tastatur (Eingabefeld verlassen) den iOS-Fehler gleich wieder beheben
+  document.addEventListener('focusout', e => { if (e.target.matches('input, textarea, select')) setTimeout(healViewport, 200); });
+  setTimeout(healViewport, 600);
   editor = new PolygonEditor(map, { onChange: updateDrawbar });
   pos = new Positioning({ onPosition, onError: e => toast(e.message, { ms: 6000 }), onHeading });
   dial = buildDial($('#compass-dial'));

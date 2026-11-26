@@ -41,6 +41,10 @@ export function toGeoJSON(records) {
 /** Liest eigene Backups und fremde GeoJSON-Dateien. Rückgabe: { records, skipped } */
 export function fromGeoJSON(input) {
   const obj = typeof input === 'string' ? JSON.parse(input) : input;
+  // Abgleich-Datei (iCloud/OneDrive): alle Datensätze 1:1, inkl. Löschungen (Grabsteine)
+  if (obj && obj.app === 'revier' && Array.isArray(obj.records)) {
+    return { records: obj.records.filter(r => r && OWN_KINDS.includes(r.kind)), skipped: 0 };
+  }
   const features = obj.type === 'FeatureCollection' ? obj.features
     : obj.type === 'Feature' ? [obj]
     : [{ type: 'Feature', geometry: obj, properties: {} }];
@@ -233,6 +237,11 @@ export function toCSV(ereignisse, { revierName = () => '', einrichtungName = () 
     ].map(q).join(';');
   });
   return '﻿' + [head.join(';'), ...rows].join('\r\n');
+}
+
+/** Inhalt der Abgleich-Datei: kompletter Stand inkl. Grabsteinen, damit auch Löschungen ankommen */
+export function toSyncFile(records, device) {
+  return JSON.stringify({ schema: 1, app: 'revier', savedAt: new Date().toISOString(), device, records });
 }
 
 /** Erkennt das Format anhand von Dateiname und Inhalt */

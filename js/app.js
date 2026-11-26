@@ -11,7 +11,7 @@ import {
   geometryArea, formatArea, findRevier, distance, bearing, compassName, formatDistance,
   jagdjahr, jagdjahrRange, openRing
 } from './geo.js';
-import { toGeoJSON, toKML, toGPX, toCSV, parseAny } from './io.js';
+import { toGeoJSON, toKML, toGPX, toCSV, parseAny, toSyncFile } from './io.js';
 import { PolygonEditor } from './draw.js';
 import { Positioning } from './gps.js';
 import { buildDial } from './compass.js';
@@ -735,16 +735,15 @@ function ereignisseTab() {
 function mehrTab() {
   const n = k => store.all(k).length;
   return `
-    ${syncSection()}
+    ${fileSyncSection()}
     <h3>Sichern & Austauschen</h3>
     <p class="hint">${n('revier')} Reviere · ${n('einrichtung')} Einrichtungen · ${n('ereignis')} Ereignisse</p>
     <div class="sheet-actions col">
-      <button class="btn primary" data-act="export-geojson">Komplett-Backup (GeoJSON)</button>
+      <button class="btn" data-act="export-geojson">Komplett-Backup (GeoJSON)</button>
       <button class="btn" data-act="export-kml">Export für Google Earth (KML)</button>
       <button class="btn" data-act="export-gpx">Export für GPS-Geräte (GPX)</button>
       <button class="btn" data-act="import">Datei importieren (GeoJSON, KML, GPX)</button>
     </div>
-    <p class="hint">Ohne Anmeldung: Backup über das Teilen-Menü („In Dateien sichern“) z. B. in OneDrive ablegen und auf dem anderen Gerät importieren – beim Import gewinnt je Eintrag der neuere Stand.</p>
     <h3>Offline-Karten</h3>
     ${offlineList()}
     <div class="sheet-actions col"><button class="btn primary" data-act="off-new">Neues Offline-Paket laden</button></div>
@@ -755,6 +754,7 @@ function mehrTab() {
       <button class="btn" data-act="clear-tiles">Zwischengespeicherte Kartenkacheln löschen</button>
       <button class="btn danger" data-act="wipe">Alle eigenen Daten auf diesem Gerät löschen</button>
     </div>
+    <details class="more"${cloud.configured ? ' open' : ''}><summary>OneDrive-Abgleich (optional, mit Microsoft-Anmeldung)</summary>${syncSection()}</details>
     <h3>Info</h3>
     <p class="hint">Revier-App <span>${APP_VERSION}</span> · nur für den Eigengebrauch.<br>
       Kartengrundlagen: © GeoBasis-DE / BKG (CC BY 4.0), © OpenStreetMap-Mitwirkende (ODbL), OpenTopoMap (CC-BY-SA), Geobasis NRW (dl-de/zero-2-0).<br>
@@ -883,6 +883,70 @@ async function runOfflineDownload(sel) {
     box.hidden = true;
     if (sheet.isOpen && state.tab === 'mehr') renderTab('mehr');
   }
+}
+
+// ---------------------------------------------------------------------------
+// iCloud-Abgleich per Datei (ohne Anmeldung)
+// ---------------------------------------------------------------------------
+// Idee: Beide Geräte lesen und schreiben dieselbe Datei "Revier-Daten.json" in iCloud Drive.
+// Abgleichen = Datei öffnen -> mit den Daten hier zusammenführen (je Eintrag gewinnt der
+// jüngere Stand, Löschungen inklusive) -> Gesamtstand wieder in dieselbe Datei speichern.
+// Das Speichern muss ein eigener Tipp sein: Browser öffnen das Teilen-Menü nur direkt nach
+// einer Nutzeraktion.
+
+const SYNC_FILE = 'Revier-Daten.json';
+let fileMode = 'import';   // was der Dateiauswahl-Dialog gerade tun soll: 'import' oder 'sync'
+
+const lsTime = k => +(localStorage.getItem(k) || 0);
+const lsSetTime = k => { try { localStorage.setItem(k, String(Date.now())); } catch (_) { /* ignore */ } };
+
+function fileSyncSection() {
+  const lastRead = lsTime('jagd.file.read'), lastSaved = lsTime('jagd.file.saved');
+  const pending = lastChange() > lastSaved;
+  return `
+    <h3>iCloud-Abgleich</h3>
+    <p class="hint">${lastRead ? 'Zuletzt abgeglichen ' + fmtDateTime(lastRead) : 'Noch nicht abgeglichen'}${pending && lastSaved ? ' · <b class="warnc">Änderungen seit dem letzten Speichern</b>' : ''}</p>
+    <div class="sheet-actions col">
+      <button class="btn primary" data-act="file-sync">Mit iCloud-Datei abgleichen</button>
+      <button class="btn" data-act="file-save">Nur speichern${lastSaved ? '' : ' (erste Datei anlegen)'}</button>
+    </div>
+    <p class="hint">Beim ersten Mal „Nur speichern“ und im Teilen-Menü „In Dateien sichern“ → iCloud Drive → z. B. Ordner „Revier“.
+      Danach auf jedem Gerät: <b>Mit iCloud-Datei abgleichen</b> → „${SYNC_FILE}“ wählen → im nächsten Schritt wieder an dieselbe Stelle speichern („Ersetzen“).
+      Am Mac in Safari unter Einstellungen → Allgemein den Download-Ort auf „Jedes Mal fragen“ stellen, dann lässt sich die Datei direkt in iCloud Drive ersetzen.</p>`;
+}
+
+function lastChange() {
+  return store.snapshot().reduce((m, r) => Math.max(m, r.updatedAt || 0), 0);
+}
+
+/** Muss direkt aus einem Tipp heraus aufgerufen werden (Teilen-Menü) */
+function saveSyncFile() {
+  deliverFile(SYNC_FILE, 'application/json', toSyncFile(store.snapshot(), store.getDeviceId()));
+  lsSetTime('jagd.file.saved');
+}
+
+async function fileSync(file) {
+  let res;
+  try { res = parseAny(file.name, await file.text()); } catch (e) { toast('Datei nicht lesbar: ' + e.message, { ms: 6000 }); return; }
+  const n = await store.importRecords(res.records, { keepTimestamps: true });
+  lsSetTime('jagd.file.read');
+  // Steht hier etwas, das in der Datei fehlt oder älter ist? Dann lohnt das Zurückspeichern.
+  const inFile = new Map(res.records.map(r => [r.id, r.updatedAt || 0]));
+  const newer = store.snapshot().filter(r => (inFile.get(r.id) ?? -1) < (r.updatedAt || 0)).length;
+  if (!newer) {
+    toast(n ? `${n} Änderung(en) aus iCloud übernommen – Datei ist auf dem neuesten Stand` : 'Alles aktuell – nichts zu tun');
+    lsSetTime('jagd.file.saved');
+    if (sheet.isOpen && state.tab === 'mehr') renderTab('mehr');
+    return;
+  }
+  await openForm({
+    title: 'Zurück in iCloud speichern',
+    submit: 'Speichern',
+    body: `<p>${n ? `${n} Änderung(en) aus der Datei übernommen. ` : ''}Auf diesem Gerät gibt es ${newer} neuere Einträge, die noch nicht in der Datei stehen.</p>
+      <p class="hint">Jetzt speichern und dieselbe Datei ersetzen (iPhone: „In Dateien sichern“ → gleicher Ordner → „Ersetzen“), damit das andere Gerät sie auch bekommt.</p>`,
+    onSubmit: () => { saveSyncFile(); }   // synchron: der Tipp auf „Speichern“ erlaubt das Teilen-Menü
+  });
+  if (sheet.isOpen && state.tab === 'mehr') renderTab('mehr');
 }
 
 // ---------------------------------------------------------------------------
@@ -1082,7 +1146,8 @@ function bindUi() {
   $('#file-input').onchange = async e => {
     const f = e.target.files[0];
     e.target.value = '';
-    if (f) await importFile(f);
+    if (!f) return;
+    if (fileMode === 'sync') await fileSync(f); else await importFile(f);
   };
 
   // Filter im Ereignis-Tab
@@ -1211,7 +1276,9 @@ async function handleAction(act, d) {
     case 'export-kml': exportFile('kml'); break;
     case 'export-gpx': exportFile('gpx'); break;
     case 'export-csv': exportFile('csv'); break;
-    case 'import': $('#file-input').click(); break;
+    case 'import': fileMode = 'import'; $('#file-input').click(); break;
+    case 'file-sync': fileMode = 'sync'; $('#file-input').click(); break;
+    case 'file-save': saveSyncFile(); setTimeout(() => renderTab('mehr'), 500); break;
     case 'clear-tiles': {
       const r = await swMessage({ type: 'clear-tiles' });
       toast(r ? 'Kachel-Zwischenspeicher geleert' : 'Kein Service Worker aktiv');

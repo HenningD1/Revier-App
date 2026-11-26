@@ -15,7 +15,7 @@ Adresse: **https://henningd1.github.io/Revier-App/**
 | Ereignisse | Sichtung, Abschuss, Fehlschuss/Nachsuche, Fallwild, Wildunfall, Wildschaden, Fährte. Mit Wildart (Tiersymbol), Anzahl, Geschlecht, Altersklasse, Gewicht, Zeit und Einrichtung |
 | Auswertung | Liste nach Jagdjahr (1.4.–31.3.), Revier, Ereignis und Wildart; Streckenübersicht; CSV-Export für Excel |
 | GPS & Kompass | Position mit Genauigkeitskreis, „Im Revier: …“, Entfernung und Richtung zu jedem Punkt; Kompass als halbrunde Gradskala am unteren Rand |
-| OneDrive (Stufe 2) | Automatischer Abgleich zwischen Geräten über eine Datei im App-Ordner deines OneDrive |
+| Abgleich | **iCloud per Datei** (ohne Anmeldung, empfohlen für iPhone + Mac) oder optional automatisch über OneDrive |
 | Offline (Stufe 3) | Offline-Pakete je Revier, Kartenausschnitt oder als NRW-Übersicht; dazu Zwischenspeicher für angesehene Kacheln |
 | Austausch | Backup als GeoJSON, Export KML/GPX, Import GeoJSON/KML/GPX (abgelaufene GPX-Tracks werden zu Revieren) |
 
@@ -38,7 +38,22 @@ Prüfen: *Einstellungen → Datenschutz & Sicherheit → Ortungsdienste → Safa
 Die App erkennt solche groben Positionen (> 500 m Ungenauigkeit): Statuszeile „⚠ ungenau“, grauer Punkt, Hinweis.
 Außerdem nimmt sie keine zwischengespeicherten Altpositionen an und verwirft kurzzeitig viel schlechtere Fixes (z. B. GPS-Abriss im Wald).
 
-## OneDrive einrichten (Stufe 2, einmalig)
+## Abgleich iPhone ↔ Mac über iCloud (ohne Anmeldung)
+
+Beide Geräte nutzen dieselbe Datei **`Revier-Daten.json`** in iCloud Drive. Eine Web-App kann iCloud nicht selbst ansprechen
+(dafür bräuchte es Apples Entwicklerprogramm), über die Dateiauswahl und das Teilen-Menü geht es aber mit zwei Tipps.
+
+1. **Einmalig:** Mehr → **Nur speichern (erste Datei anlegen)** → iPhone: „In Dateien sichern“ → iCloud Drive → z. B. Ordner „Revier“.
+2. **Abgleichen (auf jedem Gerät):** Mehr → **Mit iCloud-Datei abgleichen** → `Revier-Daten.json` wählen.
+   Die App übernimmt, was das andere Gerät neu eingetragen oder gelöscht hat. Gibt es hier Neueres, bietet sie direkt das
+   **Zurückspeichern** an → an dieselbe Stelle speichern und „Ersetzen“ wählen.
+3. **Mac:** Safari → Einstellungen → Allgemein → „Speicherort für Downloads“ auf **„Jedes Mal fragen“** stellen, dann kann man die
+   Datei beim Speichern direkt in iCloud Drive ersetzen (sonst landet sie im Download-Ordner).
+
+Je Eintrag gewinnt der jüngere Stand; Löschungen werden als „Grabstein“ mitgeschrieben. Doppelte Einträge entstehen nicht.
+Die Statuszeile im Bereich „Mehr“ zeigt, ob es Änderungen gibt, die noch nicht in der Datei stehen.
+
+## OneDrive einrichten (optional, automatischer Abgleich)
 
 Die App spricht direkt mit Microsoft (Anmeldung per OAuth 2.0 mit PKCE, Zugriff über Microsoft Graph). Dafür braucht sie eine
 eigene, kostenlose **App-Registrierung**. Sie erhält nur die Berechtigung `Files.ReadWrite.AppFolder`, sieht also ausschließlich
@@ -63,8 +78,6 @@ Geschrieben wird mit `If-Match: eTag`: Hat ein anderes Gerät die Datei inzwisch
 **Hinweis:** Microsoft gibt Web-Apps eine Anmeldung, die höchstens 24 Stunden erneuert werden kann. Danach einmal auf „Bei OneDrive anmelden“ tippen
 (meist ohne erneute Passworteingabe). Ohne Netz arbeitet die App normal weiter und gleicht später ab.
 
-**Ohne App-Registrierung** geht es auch von Hand: Mehr → Komplett-Backup → im Teilen-Menü „In Dateien sichern“ → OneDrive-Ordner;
-auf dem anderen Gerät „Datei importieren“. Auch dabei gewinnt je Eintrag der neuere Stand.
 
 ## Offline-Karten (Stufe 3)
 

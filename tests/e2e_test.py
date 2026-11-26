@@ -235,6 +235,7 @@ def main():
             route.fulfill(status=404, headers=CORS, body='{}')
         for pat in ['https://login.microsoftonline.com/**', 'https://graph.microsoft.com/**', 'https://dl.example.test/**']:
             page.route(pat, ms)
+        page.click('#sheet-body details.more summary')
         page.click('#sheet-body [data-act=sync-setup]')
         page.wait_for_selector('#dlg[open]')
         page.fill('#dlg input[name=clientId]', 'kein-guid')
@@ -286,6 +287,35 @@ def main():
         counts = page.evaluate("""(async () => { const s = await import('./js/store.js'); return ['revier','einrichtung','ereignis'].map(k => s.all(k).length); })()""")
         assert counts == [3, 3, 1], counts
         step('Daten nach Neuladen vorhanden (IndexedDB)')
+
+        # --- iCloud-Abgleich per Datei ---
+        page.click('#tabs [data-tab=mehr]')
+        with page.expect_download() as dl:
+            page.click('#sheet-body [data-act=file-save]')
+        assert dl.value.suggested_filename == 'Revier-Daten.json'
+        f1 = json.load(open(dl.value.path()))
+        assert f1['app'] == 'revier' and any(r.get('deleted') for r in f1['records']), 'Grabsteine müssen in der Datei stehen'
+        # das andere Gerät (Mac) hat inzwischen ein Ereignis ergänzt; hier entsteht parallel eine neue Einrichtung
+        f1['records'].append({'id': 'icloud-1', 'kind': 'ereignis', 'typ': 'sichtung', 'wildart': 'Rehwild', 'anzahl': 2,
+                              'zeit': 1795000000000, 'lat': 51.605, 'lng': 8.305, 'createdAt': 1, 'updatedAt': 9e12})
+        page.evaluate("(async () => { const s = await import('./js/store.js'); await s.save({ kind: 'einrichtung', typ: 'hochsitz', name: 'Neu am iPhone', lat: 51.606, lng: 8.306 }); })()")
+        with page.expect_file_chooser() as fc:
+            page.click('#sheet-body [data-act=file-sync]')
+        fc.value.set_files(files=[{'name': 'Revier-Daten.json', 'mimeType': 'application/json', 'buffer': json.dumps(f1).encode()}])
+        page.wait_for_selector('#dlg[open]')
+        assert '1 Änderung' in page.inner_text('#dlg') and 'neuere Einträge' in page.inner_text('#dlg'), page.inner_text('#dlg')
+        with page.expect_download() as dl2:
+            page.click('#dlg button[type=submit]')
+        f2 = json.load(open(dl2.value.path()))
+        names = {r.get('name') for r in f2['records']}; ids = {r['id'] for r in f2['records']}
+        assert 'icloud-1' in ids and 'Neu am iPhone' in names, (len(ids))
+        # erneut abgleichen mit der gerade gespeicherten Datei -> nichts mehr zu tun
+        with page.expect_file_chooser() as fc:
+            page.click('#sheet-body [data-act=file-sync]')
+        fc.value.set_files(files=[{'name': 'Revier-Daten.json', 'mimeType': 'application/json', 'buffer': json.dumps(f2).encode()}])
+        page.wait_for_function("document.querySelector('#toast').textContent.includes('Alles aktuell')", timeout=5000)
+        step('iCloud-Abgleich per Datei: Speichern, Zusammenführen, Zurückspeichern')
+        page.click('#sheet-close')
 
         # --- Desktop-Layout ---
         page.set_viewport_size({'width': 1280, 'height': 800})

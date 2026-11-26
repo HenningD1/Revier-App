@@ -286,3 +286,6 @@ dialog::backdrop { background: rgba(0,0,0,.45); }
 .chk input { width: 20px; height: 20px; flex: none; }
 .chk small { color: var(--muted); }
 .warnc { color: #c25e00; }
+
+details.more { margin-top: 18px; border-top: 1px solid #dcdfd8; padding-top: 8px; }
+details.more summary { cursor: pointer; font-weight: 600; color: var(--green-2); padding: 6px 0; }

@@ -76,9 +76,11 @@ async function init() {
   store.onChange(ch => {
     renderAll();
     if (!syncState.running && ch.type !== 'wipe') scheduleSync(15000);   // eigene Änderung -> bald hochladen
+    if (ch.type === 'save') ensureDailyVersion();
   });
   registerServiceWorker();
   initSync();
+  ensureDailyVersion();
 }
 
 // ---------------------------------------------------------------------------
@@ -670,7 +672,7 @@ function openTab(tab) {
 function renderTab(tab) {
   if (tab === 'reviere') sheet.open('Reviere', reviereTab());
   else if (tab === 'ereignisse') sheet.open('Ereignisse', ereignisseTab());
-  else if (tab === 'mehr') { sheet.open('Daten & Einstellungen', mehrTab()); fillStorageInfo(); }
+  else if (tab === 'mehr') { sheet.open('Daten & Einstellungen', mehrTab()); fillStorageInfo(); fillVersions(); }
 }
 
 function reviereTab() {
@@ -744,6 +746,10 @@ function mehrTab() {
       <button class="btn" data-act="export-gpx">Export für GPS-Geräte (GPX)</button>
       <button class="btn" data-act="import">Datei importieren (GeoJSON, KML, GPX)</button>
     </div>
+    <h3>Versionen</h3>
+    <p class="hint">Die App sichert den kompletten Stand automatisch: einmal am Tag sowie vor jedem Import, Abgleich und jeder Wiederherstellung (die letzten ${store.MAX_VERSIONS}, nur auf diesem Gerät).</p>
+    <div id="versions"><p class="hint">wird geladen …</p></div>
+    <div class="sheet-actions"><button class="btn" data-act="ver-save">Jetzt eine Version sichern</button></div>
     <h3>Offline-Karten</h3>
     ${offlineList()}
     <div class="sheet-actions col"><button class="btn primary" data-act="off-new">Neues Offline-Paket laden</button></div>
@@ -883,6 +889,56 @@ async function runOfflineDownload(sel) {
     box.hidden = true;
     if (sheet.isOpen && state.tab === 'mehr') renderTab('mehr');
   }
+}
+
+// ---------------------------------------------------------------------------
+// Versionsverlauf und Wiederherstellen
+// ---------------------------------------------------------------------------
+// Zusammenführen (Import, Abgleich): je Eintrag gewinnt der neuere Stand – ein altes Backup kann
+// so NICHTS zurückdrehen. Wiederherstellen dagegen setzt exakt den alten Stand ein und versieht
+// ihn mit einem frischen Zeitstempel, damit er auch auf dem anderen Gerät gewinnt.
+
+const DAY = 24 * 3600 * 1000;
+let dailyBusy = false;
+let versionCache = [];   // zuletzt angezeigte Liste (synchroner Zugriff für das Teilen-Menü)
+
+async function ensureDailyVersion() {
+  if (dailyBusy) return;
+  dailyBusy = true;
+  try {
+    const last = (await store.listVersions())[0];
+    if (!last || Date.now() - last.time > DAY) await store.saveVersion('Tagesstand');
+  } catch (e) { console.warn('Version nicht gesichert', e); }
+  dailyBusy = false;
+}
+
+const countText = c => `${c.revier} Reviere · ${c.einrichtung} Einrichtungen · ${c.ereignis} Ereignisse`;
+
+async function fillVersions() {
+  const el = $('#versions');
+  if (!el) return;
+  let list = [];
+  try { list = await store.listVersions(); } catch (_) { /* ignore */ }
+  versionCache = list;
+  if (!list.length) { el.innerHTML = '<p class="empty">Noch keine Versionen.</p>'; return; }
+  const item = v => `<li class="card ver">
+      <div class="card-main"><b>${fmtDateTime(v.time)}</b> <span class="reason">${esc(v.reason)}</span><small>${countText(v.counts)}</small></div>
+      <button class="btn sm" data-act="ver-export" data-id="${v.id}" title="Als Datei sichern">Datei</button>
+      <button class="btn sm" data-act="ver-restore" data-id="${v.id}">Wiederherstellen</button></li>`;
+  const head = list.slice(0, 3), rest = list.slice(3);
+  el.innerHTML = `<ul class="cards">${head.map(item).join('')}</ul>` +
+    (rest.length ? `<details class="more"><summary>Ältere Versionen (${rest.length})</summary><ul class="cards">${rest.map(item).join('')}</ul></details>` : '');
+}
+
+async function restoreRecords(records, label) {
+  const c = store.countKinds(records);
+  if (!(await confirmDialog('Stand wiederherstellen?',
+    `Die App kehrt genau zum Stand „${label}“ zurück (${countText(c)}). Was danach hinzugekommen ist, wird entfernt. ` +
+    'Der jetzige Stand wird vorher als Version gesichert – du kannst also zurück.', 'Wiederherstellen'))) return false;
+  await store.restoreState(records);
+  toast(`Stand „${label}“ wiederhergestellt. Beim nächsten iCloud-Abgleich „Zurückspeichern“ wählen, damit das andere Gerät ihn übernimmt.`, { ms: 9000 });
+  if (sheet.isOpen && state.tab === 'mehr') renderTab('mehr');
+  return true;
 }
 
 // ---------------------------------------------------------------------------
@@ -1066,7 +1122,16 @@ async function importFile(file) {
   const msg = `${c('revier')} Reviere, ${c('einrichtung')} Einrichtungen, ${c('ereignis')} Ereignisse` +
     (res.skipped ? ` (${res.skipped} nicht verwendbare Objekte übersprungen)` : '');
   if (!res.records.length) { toast('Nichts Verwendbares gefunden. ' + msg, { ms: 6000 }); return; }
-  if (!(await confirmDialog('Importieren?', `Gefunden: ${msg}. Vorhandene Einträge mit gleicher Kennung werden nur ersetzt, wenn die Datei neuer ist.`, 'Importieren'))) return;
+  const ownBackup = res.records.some(r => r.id && r.updatedAt);   // eigenes Backup/Abgleich-Datei -> Wiederherstellen sinnvoll
+  const choice = await openForm({
+    title: 'Datei einlesen', submit: 'Übernehmen', dialog: '#dlg2',
+    body: `<p>Gefunden: ${esc(msg)}.</p>
+      <label class="chk"><input type="radio" name="mode" value="merge" checked> <span><b>Zusammenführen</b> – Neues ergänzen; vorhandene Einträge nur ersetzen, wenn die Datei neuer ist</span></label>
+      ${ownBackup ? `<label class="chk"><input type="radio" name="mode" value="restore"> <span><b>Genau diesen Stand wiederherstellen</b> – alles andere entfernen (vorher wird gesichert)</span></label>` : ''}`,
+    onSubmit: async () => true
+  });
+  if (!choice) return;
+  if (choice.mode === 'restore') { await restoreRecords(res.records, file.name); return; }
   const n = await store.importRecords(res.records);
   toast(`${n} Einträge übernommen`);
   const rv = res.records.filter(r => r.kind === 'revier' && r.geometry);
@@ -1223,6 +1288,26 @@ async function handleAction(act, d) {
     case 'rv-zoom': if (rec) zoomTo(rec); break;
     case 'rv-offline': if (rec) { map.closePopup(); offlineForm(rec.id); } break;
     case 'off-new': offlineForm(); break;
+    case 'ver-save': {
+      const v = await store.saveVersion('von Hand gesichert', { force: true });
+      toast(v ? 'Version gesichert' : 'Keine Daten zum Sichern');
+      fillVersions();
+      break;
+    }
+    case 'ver-restore': {
+      const v = await store.getVersion(+d.id);
+      if (v) await restoreRecords(v.records, fmtDateTime(v.time) + ' · ' + v.reason);
+      break;
+    }
+    case 'ver-export': {
+      const v = versionCache.find(x => x.id === +d.id);   // ohne await: sonst verweigert iOS das Teilen-Menü
+      if (v) {
+        const t = new Date(v.time), p = n => String(n).padStart(2, '0');
+        deliverFile(`Revier-Version-${t.getFullYear()}-${p(t.getMonth() + 1)}-${p(t.getDate())}-${p(t.getHours())}${p(t.getMinutes())}.json`,
+          'application/json', toSyncFile(v.records, store.getDeviceId()));
+      }
+      break;
+    }
     case 'sync-setup': syncSetupForm(); break;
     case 'sync-login':
       try { await cloud.login(); } catch (e) { toast(e.message, { ms: 6000 }); }

@@ -1,7 +1,7 @@
 // Unit-Tests für die reinen Module (ohne Browser): node tests/unit.test.mjs
 import assert from 'node:assert/strict';
 import { ringArea, geometryArea, pointInGeometry, distance, bearing, compassName, jagdjahr, jagdjahrRange, closeRing, openRing, formatArea } from '../js/geo.js';
-import { mergeRecords } from '../js/store.js';
+import { mergeRecords, planRestore, signature, countKinds } from '../js/store.js';
 import { toGeoJSON, fromGeoJSON, toKML, toGPX, toCSV } from '../js/io.js';
 
 let n = 0;
@@ -72,6 +72,34 @@ test('Zusammenführen: neuer gewinnt, Grabstein setzt sich durch', () => {
     { id: 'd', kind: 'quatsch', updatedAt: 999 }
   ]);
   assert.deepEqual(out.map(r => r.id), ['a', 'c']);
+});
+
+test('Wiederherstellen: Zielstand mit frischem Zeitstempel, Rest wird Grabstein', () => {
+  const current = [
+    { id: 'a', kind: 'revier', name: 'neu umbenannt', updatedAt: 50 },
+    { id: 'b', kind: 'einrichtung', updatedAt: 40 },          // nach der Version angelegt
+    { id: 'c', kind: 'ereignis', deleted: true, updatedAt: 45 } // nach der Version gelöscht
+  ];
+  const version = [
+    { id: 'a', kind: 'revier', name: 'Original', updatedAt: 10 },
+    { id: 'c', kind: 'ereignis', wildart: 'Rehwild', updatedAt: 12 }
+  ];
+  const w = planRestore(current, version, 100, 'dev');
+  const by = Object.fromEntries(w.map(r => [r.id, r]));
+  assert.equal(by.a.name, 'Original'); assert.equal(by.a.updatedAt, 100);
+  assert.equal(by.c.deleted, false); assert.equal(by.c.wildart, 'Rehwild');
+  assert.equal(by.b.deleted, true); assert.equal(by.b.updatedAt, 100);
+  // auf einem anderen Gerät gewinnt der wiederhergestellte Stand beim Abgleich
+  const other = new Map(current.map(r => [r.id, r]));
+  assert.equal(mergeRecords(other, w).length, 3);
+});
+
+test('Fingerabdruck und Zählung', () => {
+  const r1 = [{ id: 'x', kind: 'revier', updatedAt: 1 }, { id: 'y', kind: 'ereignis', updatedAt: 2 }];
+  assert.equal(signature(r1), signature([...r1].reverse()));
+  assert.notEqual(signature(r1), signature([{ ...r1[0], updatedAt: 3 }, r1[1]]));
+  assert.equal(signature(r1), signature([...r1, { id: 'z', kind: 'revier', deleted: true, updatedAt: 9 }]));
+  assert.deepEqual(countKinds(r1), { revier: 1, einrichtung: 0, ereignis: 1 });
 });
 
 const recs = [

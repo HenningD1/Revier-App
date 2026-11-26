@@ -53,6 +53,22 @@ Beide Geräte nutzen dieselbe Datei **`Revier-Daten.json`** in iCloud Drive. Ein
 Je Eintrag gewinnt der jüngere Stand; Löschungen werden als „Grabstein“ mitgeschrieben. Doppelte Einträge entstehen nicht.
 Die Statuszeile im Bereich „Mehr“ zeigt, ob es Änderungen gibt, die noch nicht in der Datei stehen.
 
+## Versionen und Wiederherstellen
+
+`Revier-Daten.json` wird bei jedem Abgleich überschrieben. Damit trotzdem nichts verloren geht, führt die App einen
+**Versionsverlauf** auf jedem Gerät: Sie sichert den kompletten Stand automatisch einmal am Tag sowie vor jedem Import,
+Abgleich, „Alle Daten löschen“ und jeder Wiederherstellung. Die letzten 30 Versionen bleiben erhalten (Mehr → Versionen).
+
+- **Wiederherstellen** setzt exakt den damaligen Stand ein. Was danach hinzugekommen ist, wird entfernt (als gelöscht markiert).
+  Alle wiederhergestellten Einträge bekommen einen frischen Zeitstempel – deshalb setzt sich der alte Stand beim nächsten
+  iCloud-Abgleich auch auf dem anderen Gerät durch („Zurückspeichern“ wählen).
+- Vor jeder Wiederherstellung wird der aktuelle Stand als Version gesichert; sie lässt sich also rückgängig machen.
+- **Datei** sichert eine Version als `Revier-Version-JJJJ-MM-TT-HHMM.json`, z. B. in iCloud Drive.
+- Beim Einlesen einer Datei (Datei importieren) gibt es zwei Wege: **Zusammenführen** (je Eintrag gewinnt der neuere Stand –
+  ein altes Backup dreht damit nichts zurück) oder **Genau diesen Stand wiederherstellen** (wie oben).
+
+Der Verlauf liegt nur auf dem jeweiligen Gerät. Gegen Verlust des iPhones hilft gelegentlich eine Version als Datei in iCloud Drive.
+
 ## OneDrive einrichten (optional, automatischer Abgleich)
 
 Die App spricht direkt mit Microsoft (Anmeldung per OAuth 2.0 mit PKCE, Zugriff über Microsoft Graph). Dafür braucht sie eine

@@ -315,6 +315,36 @@ def main():
         fc.value.set_files(files=[{'name': 'Revier-Daten.json', 'mimeType': 'application/json', 'buffer': json.dumps(f2).encode()}])
         page.wait_for_function("document.querySelector('#toast').textContent.includes('Alles aktuell')", timeout=5000)
         step('iCloud-Abgleich per Datei: Speichern, Zusammenführen, Zurückspeichern')
+
+        # --- Versionsverlauf: sichern, etwas kaputt machen, wiederherstellen ---
+        live = "(async () => { const s = await import('./js/store.js'); return ['revier','einrichtung','ereignis'].map(k => s.all(k).length); })()"
+        page.click('#sheet-body [data-act=ver-save]')
+        page.wait_for_function("document.querySelector('#toast').textContent.includes('Version gesichert')")
+        before = page.evaluate(live)
+        page.evaluate("""(async () => { const s = await import('./js/store.js');
+            for (const r of s.all('ereignis')) await s.remove(r.id);
+            await s.save({ kind: 'einrichtung', typ: 'falle', name: 'Versehentlich', lat: 51.6, lng: 8.3 }); })()""")
+        page.click('#tabs [data-tab=mehr]'); page.wait_for_timeout(300)
+        assert 'von Hand gesichert' in page.inner_text('#versions')
+        page.click('#versions [data-act=ver-restore] >> nth=0')
+        page.wait_for_selector('#dlg2[open]'); page.click('#dlg2 button[type=submit]')
+        page.wait_for_function("document.querySelector('#toast').textContent.includes('wiederhergestellt')")
+        assert page.evaluate(live) == before, (page.evaluate(live), before)
+        assert 'vor Wiederherstellung' in page.inner_text('#versions')
+        step('Versionsverlauf: Stand gesichert und exakt wiederhergestellt')
+
+        # --- Backup-Datei als Stand wiederherstellen (statt zusammenführen) ---
+        with page.expect_file_chooser() as fc:
+            page.click('#sheet-body [data-act=import]')
+        fc.value.set_files(files=[{'name': 'Revier-Daten.json', 'mimeType': 'application/json', 'buffer': json.dumps(f1).encode()}])
+        page.wait_for_selector('#dlg2[open] input[value=restore]')
+        page.check('#dlg2 input[value=restore]'); page.click('#dlg2 button[type=submit]')
+        page.wait_for_function("document.querySelector('#dlg2').open && document.querySelector('#dlg2').textContent.includes('Stand wiederherstellen?')")
+        page.click('#dlg2 button[type=submit]')
+        page.wait_for_function("document.querySelector('#toast').textContent.includes('Revier-Daten.json')", timeout=10000)
+        names = page.evaluate("(async () => { const s = await import('./js/store.js'); return s.all('einrichtung').map(r => r.name); })()")
+        assert 'Neu am iPhone' not in names and 'Versehentlich' not in names, names
+        step('Backup-Datei als exakter Stand wiederhergestellt')
         page.click('#sheet-close')
 
         # --- Desktop-Layout ---

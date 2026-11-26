@@ -10,8 +10,10 @@
 //    ("last write wins"). Das ist für einen einzelnen Nutzer mit zwei Geräten ausreichend.
 
 const DB_NAME = 'jagd-app';
-const DB_VERSION = 1;
+const DB_VERSION = 2;          // 2: zusätzlich Versionsverlauf
 const STORE = 'items';
+const VSTORE = 'versions';
+export const MAX_VERSIONS = 30;
 
 export const KINDS = ['revier', 'einrichtung', 'ereignis'];
 
@@ -52,6 +54,38 @@ export function mergeRecords(local, incoming) {
   return toWrite;
 }
 
+/** Kurzer Fingerabdruck eines Datenstands (gleiche Einträge in gleicher Version = gleicher Wert) */
+export function signature(records) {
+  const str = records.filter(r => !r.deleted).map(r => r.id + ':' + (r.updatedAt || 0)).sort().join('|');
+  let h = 2166136261;                     // FNV-1a, 32 bit
+  for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 16777619); }
+  return (h >>> 0).toString(16) + '-' + str.length;
+}
+
+export function countKinds(records) {
+  const c = { revier: 0, einrichtung: 0, ereignis: 0 };
+  for (const r of records) if (!r.deleted && c[r.kind] !== undefined) c[r.kind]++;
+  return c;
+}
+
+/**
+ * Plant eine Wiederherstellung: Zielstand = lebende Einträge der Version.
+ * Alle Ziel-Einträge bekommen einen frischen Zeitstempel, alles andere wird zum Grabstein.
+ * So "gewinnt" der wiederhergestellte Stand auch beim nächsten Abgleich mit anderen Geräten
+ * (dort ist er dann der jüngste).
+ */
+export function planRestore(current, target, now, device) {
+  const want = new Map(target.filter(r => r && !r.deleted && KINDS.includes(r.kind)).map(r => [r.id, r]));
+  const writes = [];
+  for (const r of want.values()) writes.push({ ...r, updatedAt: now, device, deleted: false });
+  for (const r of current) {
+    if (!r.deleted && !want.has(r.id)) {
+      writes.push({ id: r.id, kind: r.kind, deleted: true, createdAt: r.createdAt, updatedAt: now, device });
+    }
+  }
+  return writes;
+}
+
 // ---------------------------------------------------------------------------
 // IndexedDB
 // ---------------------------------------------------------------------------
@@ -72,6 +106,7 @@ function openDb() {
         const os = d.createObjectStore(STORE, { keyPath: 'id' });
         os.createIndex('kind', 'kind');
       }
+      if (!d.objectStoreNames.contains(VSTORE)) d.createObjectStore(VSTORE, { keyPath: 'id' });
     };
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => reject(req.error);
@@ -184,6 +219,8 @@ export async function importRecords(records, { keepTimestamps = true } = {}) {
     return rec;
   });
   const toWrite = mergeRecords(cache, prepared);
+  // Bevor fremde Daten etwas ändern: aktuellen Stand im Versionsverlauf sichern
+  if (toWrite.length) await saveVersion('vor Import/Abgleich');
   await writeMany(toWrite);
   emit({ type: 'import', count: toWrite.length });
   return toWrite.length;
@@ -196,6 +233,7 @@ export function snapshot() {
 
 /** Löscht wirklich alles (nur über Einstellungen erreichbar) */
 export async function wipeAll() {
+  await saveVersion('vor „Alle Daten löschen“', { force: true });   // der Verlauf bleibt erhalten
   await new Promise((resolve, reject) => {
     const tx = db.transaction(STORE, 'readwrite');
     tx.objectStore(STORE).clear();
@@ -204,4 +242,46 @@ export async function wipeAll() {
   });
   cache.clear();
   emit({ type: 'wipe' });
+}
+
+// ---------------------------------------------------------------------------
+// Versionsverlauf: vollständige Kopien des Datenstands auf diesem Gerät
+// ---------------------------------------------------------------------------
+
+function vTx(mode) { return db.transaction(VSTORE, mode).objectStore(VSTORE); }
+
+/** neueste zuerst */
+export async function listVersions() {
+  const rows = await idbRequest(vTx('readonly').getAll());
+  return rows.sort((a, b) => b.time - a.time);
+}
+
+export async function getVersion(id) {
+  return idbRequest(vTx('readonly').get(id));
+}
+
+/**
+ * Sichert den aktuellen Stand. Unverändert seit der letzten Version -> nichts zu tun (außer force).
+ * Ältere Versionen über MAX_VERSIONS hinaus werden gelöscht.
+ */
+export async function saveVersion(reason, { force = false } = {}) {
+  const records = all(null);
+  if (!records.length && !force) return null;
+  const sig = signature(records);
+  const list = await listVersions();
+  if (!force && list[0] && list[0].sig === sig) return null;
+  const now = Date.now();
+  const v = { id: now, time: now, reason, sig, counts: countKinds(records), records: JSON.parse(JSON.stringify(records)) };
+  await idbRequest(vTx('readwrite').put(v));
+  for (const old of list.slice(MAX_VERSIONS - 1)) await idbRequest(vTx('readwrite').delete(old.id));
+  return v;
+}
+
+/** Stellt exakt den Stand einer Version (oder Datei) wieder her; vorher wird der jetzige Stand gesichert. */
+export async function restoreState(records) {
+  await saveVersion('vor Wiederherstellung', { force: true });
+  const writes = planRestore(Array.from(cache.values()), records, Date.now(), getDeviceId());
+  await writeMany(writes);
+  emit({ type: 'restore', count: writes.length });
+  return countKinds(records);
 }

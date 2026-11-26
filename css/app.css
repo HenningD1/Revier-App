@@ -289,3 +289,9 @@ dialog::backdrop { background: rgba(0,0,0,.45); }
 
 details.more { margin-top: 18px; border-top: 1px solid #dcdfd8; padding-top: 8px; }
 details.more summary { cursor: pointer; font-weight: 600; color: var(--green-2); padding: 6px 0; }
+
+.card.ver { flex-wrap: wrap; justify-content: flex-end; cursor: default; }
+.card.ver .card-main { flex-basis: 100%; }
+.card.ver .card-main b { display: inline; }
+.card.ver .reason { color: var(--muted); font-size: 13px; }
+.card.ver .card-main small { display: block; }

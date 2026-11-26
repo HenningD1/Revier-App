@@ -121,7 +121,7 @@ def main():
         page.click('#tabs [data-tab=reviere]')
         txt = page.inner_text('#sheet-body')
         assert 'Eigenjagd Test' in txt and '1 Einrichtungen' in txt and 'ha' in txt, txt
-        page.click('#sheet-body li[data-act=rv-zoom]')
+        page.click('#sheet-body li[data-act=rv-zoom] .card-main')
         assert not page.is_visible('#sheet')
         step('Revierliste und Zoom')
 

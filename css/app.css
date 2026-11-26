@@ -10,7 +10,12 @@
   --tabs-h: 56px;
   --safe-top: env(safe-area-inset-top, 0px);
   --safe-bottom: env(safe-area-inset-bottom, 0px);
-  --bottom: calc(var(--tabs-h) + var(--safe-bottom));
+  /* Abstand der Leistentexte zum Home-Balken: etwas weniger als die volle Sicherheitszone, wie bei nativen Apps */
+  --tabs-pad: max(calc(var(--safe-bottom) - 14px), 4px);
+  /* iOS-Fehler bei Home-Bildschirm-Apps: der Bildbereich endet um die Statusleisten-Höhe zu früh.
+     --gap wird in js/app.js gemessen (sonst 0) und schiebt alles Untere wieder an den echten Bildschirmrand. */
+  --gap: 0px;
+  --bottom: calc(var(--tabs-h) + var(--tabs-pad) - var(--gap));
 }
 
 * { box-sizing: border-box; }
@@ -81,7 +86,7 @@ body {
 #compass-dial .dir.n { fill: #ff5a4a; }
 #compass-dial .index { fill: #d9822b; stroke: #fff; stroke-width: 1.5; }
 #compass-dial .read { fill: #fff; font: 800 22px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
-body.mode-draw #compass-dial, body.mode-place #compass-dial { bottom: calc(150px + var(--safe-bottom)); }
+body.mode-draw #compass-dial, body.mode-place #compass-dial { bottom: calc(150px + var(--tabs-pad) - var(--gap)); }
 
 /* ---------- Fadenkreuz & Werkzeugleisten ---------- */
 #crosshair {
@@ -95,9 +100,9 @@ body.mode-draw #compass-dial, body.mode-place #compass-dial { bottom: calc(150px
 #crosshair[hidden] { display: none; }
 
 .toolbar {
-  position: fixed; left: 0; right: 0; bottom: 0; z-index: 1000;
+  position: fixed; left: 0; right: 0; bottom: calc(0px - var(--gap)); z-index: 1000;
   background: #fff; box-shadow: 0 -2px 10px rgba(0,0,0,.2);
-  padding: 10px 12px calc(10px + var(--safe-bottom));
+  padding: 10px 12px calc(8px + var(--tabs-pad));
 }
 .toolbar[hidden] { display: none; }
 .toolbar-info { font-size: 14px; margin-bottom: 8px; color: var(--muted); }
@@ -107,13 +112,13 @@ body.mode-draw #compass-dial, body.mode-place #compass-dial { bottom: calc(150px
 
 body.mode-draw #tabs, body.mode-place #tabs,
 body.mode-draw #btn-add, body.mode-place #btn-add { display: none; }
-body.mode-draw #fabs, body.mode-place #fabs { bottom: calc(150px + var(--safe-bottom)); }
+body.mode-draw #fabs, body.mode-place #fabs { bottom: calc(150px + var(--tabs-pad) - var(--gap)); }
 .drawing { cursor: crosshair; }
 
 /* ---------- Untere Navigation ---------- */
 #tabs {
-  position: fixed; left: 0; right: 0; bottom: 0; z-index: 1000; height: var(--bottom);
-  padding-bottom: var(--safe-bottom); background: var(--green); display: flex;
+  position: fixed; left: 0; right: 0; bottom: calc(0px - var(--gap)); z-index: 1000; height: calc(var(--tabs-h) + var(--tabs-pad));
+  padding-bottom: var(--tabs-pad); background: var(--green); display: flex;
 }
 #tabs button {
   flex: 1; border: none; background: none; color: #b9c6bc; font: inherit; font-size: 14px; cursor: pointer;
@@ -295,3 +300,27 @@ details.more summary { cursor: pointer; font-weight: 600; color: var(--green-2);
 .card.ver .card-main b { display: inline; }
 .card.ver .reason { color: var(--muted); font-size: 13px; }
 .card.ver .card-main small { display: block; }
+
+/* ---------- Handy: größere Schrift, schmalere Leiste, mehr Platz für Listen ---------- */
+@media (max-width: 700px) {
+  :root { --tabs-h: 50px; }
+  body { font-size: 17px; }
+  #tabs button { font-size: 16px; font-weight: 600; }
+  .btn.sm { font-size: 15px; padding: 8px 12px; }
+  #sheet { height: 72vh; }
+  #sheet header { padding: 10px 14px 4px; }
+  #sheet header h2 { font-size: 22px; }
+  #sheet-body h3 { font-size: 19px; margin-top: 20px; }
+  .hint, .summary, .card-main small, .card.ver .reason, .progress-row { font-size: 15px; }
+  .filters label, .legend { font-size: 14px; }
+  .dlg-form header h2 { font-size: 21px; }
+  .dlg-body label, .swatches legend, .checks legend { font-size: 15px; }
+  .dlg-body label.chk { font-size: 17px; }
+  .pop-title { font-size: 17px; }
+  .pop-sub { font-size: 14.5px; }
+  .pop-notes { font-size: 15px; }
+  #statusbar { font-size: 15px; }
+  .toolbar-info { font-size: 16px; }
+  table.strecke { font-size: 16px; }
+}
+details.howto summary { cursor: pointer; color: var(--green-2); font-weight: 600; padding: 4px 0; }

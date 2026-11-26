@@ -102,6 +102,18 @@ test('Fingerabdruck und Zählung', () => {
   assert.deepEqual(countKinds(r1), { revier: 1, einrichtung: 0, ereignis: 1 });
 });
 
+const { iosGap } = await import('../js/ui.js');
+test('iOS-Ausgleich nur beim bekannten Fehlerbild', () => {
+  // Fehlerbild: Fenster um genau die Statusleiste zu kurz
+  assert.equal(iosGap({ standalone: true, safeTop: 62, screenH: 874, innerH: 812 }), 62);
+  // korrekt: Fenster so hoch wie der Bildschirm
+  assert.equal(iosGap({ standalone: true, safeTop: 62, screenH: 874, innerH: 874 }), 0);
+  // Statusleiste deckend (Inhalt beginnt darunter): kein Ausgleich, sonst rutscht die Leiste aus dem Bild
+  assert.equal(iosGap({ standalone: true, safeTop: 0, screenH: 874, innerH: 812 }), 0);
+  // im normalen Safari (Adressleiste) nie
+  assert.equal(iosGap({ standalone: false, safeTop: 62, screenH: 874, innerH: 700 }), 0);
+});
+
 const recs = [
   { id: 'r1', kind: 'revier', name: 'Feld & Wald <Nord>', color: '#43a047', notes: '', geometry: { type: 'Polygon', coordinates: [sq] }, updatedAt: 5 },
   { id: 'e1', kind: 'einrichtung', typ: 'kanzel', name: 'Kanzel 1', lat: 51.605, lng: 8.305, blick: 90, updatedAt: 5 },

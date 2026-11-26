@@ -134,3 +134,28 @@ export function options(list, selected, { value = x => x.id ?? x, label = x => x
     return `<option value="${esc(v)}"${String(v) === String(selected ?? '') ? ' selected' : ''}>${esc(label(x))}</option>`;
   }).join('');
 }
+
+/**
+ * iOS-Ausgleich (Home-Bildschirm-App mit durchscheinender Statusleiste): Der Bildbereich ist dann um die
+ * Statusleisten-Höhe zu kurz, unten bleibt ein leerer Streifen. Erkannt wird das daran, dass die fehlende
+ * Höhe (Bildschirm minus Fensterhöhe) gleich dem oberen Sicherheitsabstand ist.
+ * @returns Ausgleich in px (0 = alles in Ordnung)
+ */
+export function iosGap({ standalone, safeTop, screenH, innerH }) {
+  const diff = screenH - innerH;
+  if (!standalone || safeTop <= 0 || diff <= 0) return 0;
+  return Math.abs(diff - safeTop) <= 12 ? diff : 0;
+}
+
+export function measureIosGap() {
+  const standalone = navigator.standalone === true || matchMedia('(display-mode: standalone)').matches;
+  const probe = document.createElement('div');
+  probe.style.cssText = 'position:fixed;top:0;left:0;width:1px;height:0;padding-top:env(safe-area-inset-top,0px);visibility:hidden;pointer-events:none';
+  document.body.appendChild(probe);
+  const safeTop = probe.offsetHeight;
+  probe.remove();
+  const portrait = innerHeight >= innerWidth;
+  const screenH = portrait ? Math.max(screen.width, screen.height) : Math.min(screen.width, screen.height);
+  const info = { standalone, safeTop, screenH, innerH: innerHeight };
+  return { gap: iosGap(info), ...info };
+}

@@ -20,7 +20,7 @@ import { tileUrl, geomBounds, buffer } from './tiles.js';
 import * as offline from './offline.js';
 import { OneDrive, syncOnce, redirectUri, AuthError, FILE_NAME } from './sync.js';
 import {
-  $, esc, toast, openForm, confirmDialog, sheet, deliverFile, fmtDateTime, toLocalInput, options
+  $, esc, toast, openForm, confirmDialog, sheet, deliverFile, fmtDateTime, toLocalInput, options, measureIosGap
 } from './ui.js';
 
 // ---------------------------------------------------------------------------
@@ -61,13 +61,24 @@ const revierOf = p => (typeof p.lat === 'number' ? findRevier([p.lng, p.lat], re
 // Start
 // ---------------------------------------------------------------------------
 
+let screenInfo = null;
+function applyIosGap() {
+  screenInfo = measureIosGap();
+  const before = getComputedStyle(document.documentElement).getPropertyValue('--gap').trim();
+  document.documentElement.style.setProperty('--gap', screenInfo.gap + 'px');
+  if (map && before !== screenInfo.gap + 'px') map.invalidateSize();   // Karte hat jetzt eine andere Höhe
+}
+
 async function init() {
   if (typeof L === 'undefined') {
     document.body.innerHTML = '<p style="padding:2em">Die Kartenbibliothek konnte nicht geladen werden. Beim ersten Start wird eine Internetverbindung benötigt.</p>';
     return;
   }
   await store.openStore();
+  applyIosGap();
   initMap();
+  ['resize', 'orientationchange'].forEach(ev => window.addEventListener(ev, () => setTimeout(applyIosGap, 300)));
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) setTimeout(applyIosGap, 300); });
   editor = new PolygonEditor(map, { onChange: updateDrawbar });
   pos = new Positioning({ onPosition, onError: e => toast(e.message, { ms: 6000 }), onHeading });
   dial = buildDial($('#compass-dial'));
@@ -766,7 +777,8 @@ function mehrTab() {
     <h3>Info</h3>
     <p class="hint">Revier-App <span>${APP_VERSION}</span> · nur für den Eigengebrauch.<br>
       Kartengrundlagen: © GeoBasis-DE / BKG (CC BY 4.0), © OpenStreetMap-Mitwirkende (ODbL), OpenTopoMap (CC-BY-SA), Geobasis NRW (dl-de/zero-2-0).<br>
-      Tipp: Langes Drücken auf die Karte öffnet ein Schnellmenü.</p>`;
+      Tipp: Langes Drücken auf die Karte öffnet ein Schnellmenü.</p>
+    <p class="hint">Anzeige: Fenster ${screenInfo ? screenInfo.innerH : '?'} px, Bildschirm ${screenInfo ? screenInfo.screenH : '?'} px, Statusleiste ${screenInfo ? screenInfo.safeTop : '?'} px, iOS-Ausgleich ${screenInfo ? screenInfo.gap : 0} px${screenInfo && screenInfo.standalone ? ' (Home-Bildschirm-App)' : ''}</p>`;
 }
 
 async function fillStorageInfo() {
@@ -1031,9 +1043,9 @@ function fileSyncSection() {
       <button class="btn primary" data-act="file-sync">Mit iCloud-Datei abgleichen</button>
       <button class="btn" data-act="file-save">Nur speichern${lastSaved ? '' : ' (erste Datei anlegen)'}</button>
     </div>
-    <p class="hint">Beim ersten Mal „Nur speichern“ und im Teilen-Menü „In Dateien sichern“ → iCloud Drive → z. B. Ordner „Revier“.
+    <details class="howto"><summary>So geht's</summary><p class="hint">Beim ersten Mal „Nur speichern“ und im Teilen-Menü „In Dateien sichern“ → iCloud Drive → z. B. Ordner „Revier“.
       Danach auf jedem Gerät: <b>Mit iCloud-Datei abgleichen</b> → „${SYNC_FILE}“ wählen → im nächsten Schritt wieder an dieselbe Stelle speichern („Ersetzen“).
-      Am Mac in Safari unter Einstellungen → Allgemein den Download-Ort auf „Jedes Mal fragen“ stellen, dann lässt sich die Datei direkt in iCloud Drive ersetzen.</p>`;
+      Am Mac in Safari unter Einstellungen → Allgemein den Download-Ort auf „Jedes Mal fragen“ stellen, dann lässt sich die Datei direkt in iCloud Drive ersetzen.</p></details>`;
 }
 
 function lastChange() {

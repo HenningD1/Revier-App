@@ -66,6 +66,8 @@ function applyIosGap() {
   screenInfo = measureIosGap();
   const before = getComputedStyle(document.documentElement).getPropertyValue('--gap').trim();
   document.documentElement.style.setProperty('--gap', screenInfo.gap + 'px');
+  document.documentElement.classList.toggle('ios-gap', screenInfo.gap > 0);
+  if (screenInfo.gap > 0) window.scrollTo(0, 0);   // Dokument ist jetzt länger als das Fenster: oben festhalten
   if (map && before !== screenInfo.gap + 'px') map.invalidateSize();   // Karte hat jetzt eine andere Höhe
 }
 
@@ -78,6 +80,8 @@ async function init() {
   applyIosGap();
   initMap();
   ['resize', 'orientationchange'].forEach(ev => window.addEventListener(ev, () => setTimeout(applyIosGap, 300)));
+  // verlängertes Dokument (iOS-Ausgleich) darf nicht verrutschen, wenn man auf der Leiste wischt
+  window.addEventListener('scroll', () => { if (screenInfo && screenInfo.gap > 0 && window.scrollY) window.scrollTo(0, 0); }, { passive: true });
   document.addEventListener('visibilitychange', () => { if (!document.hidden) setTimeout(applyIosGap, 300); });
   editor = new PolygonEditor(map, { onChange: updateDrawbar });
   pos = new Positioning({ onPosition, onError: e => toast(e.message, { ms: 6000 }), onHeading });

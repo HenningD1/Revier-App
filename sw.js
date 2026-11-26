@@ -8,7 +8,7 @@
 //
 // Bei Änderungen am App-Code VERSION hochzählen, damit Browser das Update erkennen.
 
-const VERSION = '0.8.0';
+const VERSION = '0.8.1';
 const SHELL_CACHE = 'shell-' + VERSION;
 const CDN_CACHE = 'cdn-v1';
 const TILE_CACHE = 'tiles-v1';
